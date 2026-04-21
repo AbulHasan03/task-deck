@@ -1,5 +1,5 @@
 /**
- * Task Deck — Kanban Board Application
+ * TaskDeck — Kanban Board Application
  * ─────────────────────────────────
  * Architecture:
  *   SupabaseClient → thin wrapper over @supabase/supabase-js
@@ -152,7 +152,7 @@ const Storage = {
     // No board yet — create one
     const { data: newBoard, error: createErr } = await sb
       .from('boards')
-      .insert({ user_id: userId, title: 'My Project Board' })
+      .insert({ user_id: userId, title: 'My TaskDeck Board' })
       .select()
       .single();
 
