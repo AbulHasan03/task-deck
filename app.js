@@ -272,16 +272,18 @@ const Storage = {
   /* ── Load full board state ── */
 
   async loadBoardState(boardId) {
-    const [lists, cards] = await Promise.all([
-      this.getLists(boardId),
-      this.getCards(boardId),
-    ]);
+    // Optimized: Fetch lists and their related cards in one single request
+    const { data, error } = await sb
+      .from('lists')
+      .select('*, cards(*)')
+      .eq('board_id', boardId)
+      .order('position', { ascending: true });
 
-    // Nest cards into their parent lists
-    return lists.map(list => ({
+    if (error) throw error;
+
+    return (data || []).map(list => ({
       ...list,
-      cards: cards
-        .filter(c => c.list_id === list.id)
+      cards: (list.cards || [])
         .sort((a, b) => a.position - b.position)
         .map(c => ({
           id:          c.id,
@@ -1029,23 +1031,21 @@ const Board = (() => {
       UI.setLoading('Loading board…', 40);
       const board = await Storage.getOrCreateBoard(user.id);
 
-      const existingLists = await Storage.getLists(board.id);
-      if (existingLists.length === 0) {
+      UI.setLoading('Fetching your tasks…', 70);
+      let lists = await Storage.loadBoardState(board.id);
+
+      // Seed only if the board is completely empty
+      if (lists.length === 0) {
         UI.setLoading('Setting up default lists…', 60);
         await Storage.seedDefaultBoard(board.id);
+        lists = await Storage.loadBoardState(board.id);
       }
-
-      UI.setLoading('Fetching cards…', 80);
-      const lists = await Storage.loadBoardState(board.id);
 
       AppState.setState(() => ({
         boardId:    board.id,
         boardTitle: board.title,
         lists,
       }), true); // true = skip subscriber notify
-
-      UI.setLoading('All set!', 100);
-      await new Promise(r => setTimeout(r, 280));
 
       UI.hideLoading();
       UI.setSyncStatus('saved');
