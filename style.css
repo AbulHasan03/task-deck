@@ -117,7 +117,7 @@ h1, h2, h3 { font-family: var(--font-serif); font-weight: 500; letter-spacing: -
   border-radius: var(--radius-sm);
   transition: var(--transition);
   white-space: nowrap;
-  max-width: 300px;
+  max-width: 500px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -176,8 +176,8 @@ h1, h2, h3 { font-family: var(--font-serif); font-weight: 500; letter-spacing: -
 .board-scroll {
   display: flex;
   align-items: flex-start;
-  gap: 16px;
-  padding: 0 28px;
+  gap: 24px;
+  padding: 0 32px;
   height: 100%;
   overflow-x: auto;
   overflow-y: hidden;
@@ -193,7 +193,7 @@ h1, h2, h3 { font-family: var(--font-serif); font-weight: 500; letter-spacing: -
    ───────────────────────────────────────────── */
 .list {
   flex-shrink: 0;
-  width: 290px;
+  width: 320px;
   background: var(--list-bg);
   border: 1px solid var(--list-border);
   border-radius: var(--radius-lg);
@@ -525,7 +525,7 @@ h1, h2, h3 { font-family: var(--font-serif); font-weight: 500; letter-spacing: -
    ───────────────────────────────────────────── */
 .add-list-ghost {
   flex-shrink: 0;
-  width: 240px;
+  width: 280px;
   height: 54px;
   display: flex;
   align-items: center;
@@ -803,6 +803,17 @@ h1, h2, h3 { font-family: var(--font-serif); font-weight: 500; letter-spacing: -
   .modal-overlay { align-items: flex-end; padding: 0; }
   .modal { border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
   .modal-overlay.open .modal { transform: translateY(0); }
+}
+
+/* High-resolution Scaling for Laptops/Desktops */
+@media (min-width: 1400px) {
+  .board-scroll {
+    gap: 32px;
+    padding: 0 48px;
+  }
+  .list {
+    width: 350px;
+  }
 }
 
 /* ─────────────────────────────────────────────
