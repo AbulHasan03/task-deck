@@ -1114,7 +1114,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   initAuthUI();
 
   // Home button → back to dashboard
-  document.getElementById('logoHomeBtn')?.addEventListener('click', () => {
+  document.getElementById('logoHomeBtn')?.addEventListener('click', (e) => {
+    e.preventDefault();
     AppState.setState(s => ({ ...s, view: 'dashboard' }));
     UI.showDashboard();
     Dashboard.render();
