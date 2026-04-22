@@ -1123,6 +1123,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await Auth.init(
     async user => {
+      // If app is already visible and we have a profile, ignore redundant auth events (like token refreshes)
+      if (UI.el('appShell')?.style.display === 'flex' && AppState.getState().profile) {
+        return;
+      }
+
       UI.hideAuth();
 
       UI.showLoading();
@@ -1160,7 +1165,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         Dashboard.render();
       } catch (err) {
         console.error('Boot error:', err);
-        UI.setLoading('Failed to load. Check your Supabase config.', 100);
+        UI.setLoading('Session error. Signing out…', 100);
+        // Clear potential "cache" issues by signing out and resetting UI
+        setTimeout(() => {
+          Auth.signOut().finally(() => {
+            window.location.reload(); // Hard reset to clear any stuck state
+          });
+        }, 2000);
       }
     },
     () => {
