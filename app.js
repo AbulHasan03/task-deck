@@ -30,7 +30,8 @@ const Theme = (() => {
     currentTheme = theme;
     localStorage.setItem(STORAGE_KEY, theme);
 
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    const m = window.matchMedia?.('(prefers-color-scheme: dark)');
+    const prefersDark = m ? m.matches : false;
     const useDark     = theme === 'dark' || (theme === 'system' && prefersDark);
     document.documentElement.setAttribute('data-theme', useDark ? 'dark' : 'light');
 
@@ -136,17 +137,20 @@ const Auth = (() => {
   function getUserId() { return currentUser?.id ?? null; }
 
   async function init(onSignedIn, onSignedOut) {
+    let initialized = false;
     sb.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         currentUser = session.user;
-        await onSignedIn(currentUser);
-      } else {
+        if (!initialized || event === 'SIGNED_IN') {
+          initialized = true;
+          await onSignedIn(currentUser);
+        }
+      } else if (event === 'SIGNED_OUT' || (initialized && !session)) {
         currentUser = null;
+        initialized = true;
         onSignedOut();
       }
     });
-    const { data: { session } } = await sb.auth.getSession();
-    if (!session) onSignedOut();
   }
 
   async function signIn(email, password) {
@@ -1243,17 +1247,25 @@ function initAuthUI() {
    ═══════════════════════════════════════════════════════════ */
 
 let bootTimer = null;
+let isBooting = false;
+
+function startBootTimer() {
+  if (bootTimer) clearTimeout(bootTimer);
+  const recovery = document.getElementById('loadingRecovery');
+  if (recovery) recovery.style.display = 'none';
+  
+  bootTimer = setTimeout(() => {
+    const rec = document.getElementById('loadingRecovery');
+    if (rec) rec.style.display = 'flex';
+    UI.setLoading('Taking longer than usual...', 100);
+  }, 7000);
+}
 
 document.addEventListener('DOMContentLoaded', async () => {
   Theme.init();
   initAuthUI();
 
-  // Show recovery options if loading takes too long (> 7 seconds)
-  bootTimer = setTimeout(() => {
-    const recovery = document.getElementById('loadingRecovery');
-    if (recovery) recovery.style.display = 'flex';
-    UI.setLoading('Taking longer than usual...', 100);
-  }, 7000);
+  startBootTimer();
 
   // Home button → back to dashboard
   document.getElementById('logoHomeBtn')?.addEventListener('click', (e) => {
@@ -1271,14 +1283,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await Auth.init(
     async user => {
+      if (isBooting) return;
+      isBooting = true;
+      
+      startBootTimer();
       UI.hideAuth();
       UI.showLoading();
 
       try {
-        UI.setLoading('Fetching profile…', 40);
+        UI.setLoading('Loading profile…', 40);
         // Load profile
         let profile = await Storage.getProfile(user.id);
         if (!profile) {
+          UI.setLoading('Creating profile…', 50);
           const displayName = user.user_metadata?.display_name || '';
           await Storage.upsertProfile(user.id, { display_name: displayName, email: user.email });
           profile = { id: user.id, display_name: displayName, email: user.email };
@@ -1300,20 +1317,25 @@ document.addEventListener('DOMContentLoaded', async () => {
           lists: [],
         }), true);
 
-        clearTimeout(bootTimer);
         UI.setProfile(profile);
-        UI.setLoading('', 100);
+        UI.setLoading('Success', 100);
+        
+        clearTimeout(bootTimer);
         UI.hideLoading();
         UI.showApp();
         UI.showDashboard();
         Dashboard.render();
       } catch (err) {
         console.error('Boot error:', err);
-        UI.setLoading('Error loading data.', 100);
+        UI.setLoading('Data sync failed.', 100);
+        clearTimeout(bootTimer);
         document.getElementById('loadingRecovery').style.display = 'flex';
+      } finally {
+        isBooting = false;
       }
     },
     () => {
+      isBooting = false;
       clearTimeout(bootTimer);
       UI.hideLoading();
       UI.hideApp();
