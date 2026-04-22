@@ -1,38 +1,25 @@
 /**
  * TaskDeck — Kanban Board Application
  * ─────────────────────────────────
- * Architecture:
- *   SupabaseClient → thin wrapper over @supabase/supabase-js
- *   Auth           → sign-in / sign-up / session management
- *   Storage        → all DB reads & writes (boards, lists, cards)
- *   AppState       → in-memory state + subscriber pattern
- *   Render         → pure DOM builders
- *   DragEngine     → pointer-based drag & drop
- *   Modal          → card detail editor
- *   Board          → orchestrates everything
- *
- * ─── SETUP ────────────────────────────────────────────────────
+ * SETUP:
  *  1. Create a Supabase project at https://supabase.com
- *  2. Run the SQL in schema.sql in the Supabase SQL editor
- *  3. Replace the two constants below with your project values
- *     (found in: Supabase dashboard → Project Settings → API)
- * ──────────────────────────────────────────────────────────────
+ *  2. Run schema.sql in the Supabase SQL editor
+ *  3. Replace the two constants below (Project Settings → API)
  */
 
-'use strict';
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
 
 /* ═══════════════════════════════════════════════════════════
-   ⚙️  CONFIGURATION — paste your values from Supabase dashboard
+   ⚙️  CONFIGURATION
    ═══════════════════════════════════════════════════════════ */
 
-const SUPABASE_URL     = 'https://cagykqeunkljhldtkmqq.supabase.co';
+const SUPABASE_URL      = 'https://cagykqeunkljhldtkmqq.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_gQeFmfSyBsEsNKA8sL1X-Q_OHhaoxd6';
 
 /* ═══════════════════════════════════════════════════════════
    SUPABASE CLIENT
    ═══════════════════════════════════════════════════════════ */
 
-const { createClient } = supabase;
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /* ═══════════════════════════════════════════════════════════
@@ -136,49 +123,15 @@ const Storage = {
 
   /* ── Boards ── */
 
-  async getOrCreateBoard(userId) {
-    // Look for the user's first board
-    const { data, error } = await sb
-      .from('boards')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .maybeSingle();
-
-    if (error) throw error;
-    if (data) return data;
-
-    // No board yet — create one
-    const { data: newBoard, error: createErr } = await sb
-      .from('boards')
-      .insert({ user_id: userId, title: 'My TaskDeck Board' })
-      .select()
-      .single();
-
-    if (createErr) throw createErr;
-    return newBoard;
-  },
-
   async updateBoardTitle(boardId, title) {
     const { error } = await sb
       .from('boards')
-      .update({ title, updated_at: new Date().toISOString() })
+      .update({ title })
       .eq('id', boardId);
     if (error) throw error;
   },
 
   /* ── Lists ── */
-
-  async getLists(boardId) {
-    const { data, error } = await sb
-      .from('lists')
-      .select('*')
-      .eq('board_id', boardId)
-      .order('position', { ascending: true });
-    if (error) throw error;
-    return data ?? [];
-  },
 
   async createList(boardId, title, position) {
     const { data, error } = await sb
@@ -193,28 +146,17 @@ const Storage = {
   async updateListTitle(listId, title) {
     const { error } = await sb
       .from('lists')
-      .update({ title, updated_at: new Date().toISOString() })
+      .update({ title })
       .eq('id', listId);
     if (error) throw error;
   },
 
   async deleteList(listId) {
-    // Cards cascade-deleted via DB foreign key ON DELETE CASCADE
     const { error } = await sb.from('lists').delete().eq('id', listId);
     if (error) throw error;
   },
 
   /* ── Cards ── */
-
-  async getCards(boardId) {
-    const { data, error } = await sb
-      .from('cards')
-      .select('*')
-      .eq('board_id', boardId)
-      .order('position', { ascending: true });
-    if (error) throw error;
-    return data ?? [];
-  },
 
   async createCard(boardId, listId, title, position) {
     const { data, error } = await sb
@@ -227,10 +169,9 @@ const Storage = {
   },
 
   async updateCard(cardId, fields) {
-    // fields: { title, description, due_date, priority }
     const { error } = await sb
       .from('cards')
-      .update({ ...fields, updated_at: new Date().toISOString() })
+      .update(fields)
       .eq('id', cardId);
     if (error) throw error;
   },
@@ -238,24 +179,14 @@ const Storage = {
   async moveCard(cardId, newListId, newPosition, boardId) {
     const { error } = await sb
       .from('cards')
-      .update({
-        list_id:    newListId,
-        position:   newPosition,
-        board_id:   boardId,
-        updated_at: new Date().toISOString(),
-      })
+      .update({ list_id: newListId, position: newPosition, board_id: boardId })
       .eq('id', cardId);
     if (error) throw error;
   },
 
   async reorderCards(cards) {
-    // Bulk-update positions for a list after a drag-and-drop
     await Promise.all(
-      cards.map((c, i) =>
-        sb.from('cards')
-          .update({ position: i, updated_at: new Date().toISOString() })
-          .eq('id', c.id)
-      )
+      cards.map((c, i) => sb.from('cards').update({ position: i }).eq('id', c.id))
     );
   },
 
@@ -269,23 +200,21 @@ const Storage = {
     if (error) throw error;
   },
 
-  /* ── Load full board state ── */
+  /* ── Single-call board init via Postgres function ──
+     Replaces 4 sequential round trips with one RPC call.
+     The function lives in schema.sql as get_or_init_board().  */
 
-  async loadBoardState(boardId) {
-    // Optimized: Fetch lists and their related cards in one single request
-    const { data, error } = await sb
-      .from('lists')
-      .select('*, cards(*)')
-      .eq('board_id', boardId)
-      .order('position', { ascending: true });
-
+  async initBoard(userId) {
+    const { data, error } = await sb.rpc('get_or_init_board', { p_user_id: userId });
     if (error) throw error;
 
-    return (data || []).map(list => ({
-      ...list,
-      cards: (list.cards || [])
-        .sort((a, b) => a.position - b.position)
-        .map(c => ({
+    // data is { board_id, board_title, lists: [{id,title,position,cards:[...]}] }
+    return {
+      boardId:    data.board_id,
+      boardTitle: data.board_title,
+      lists: data.lists.map(l => ({
+        ...l,
+        cards: l.cards.map(c => ({
           id:          c.id,
           title:       c.title,
           description: c.description || '',
@@ -293,45 +222,8 @@ const Storage = {
           priority:    c.priority    || '',
           position:    c.position,
         })),
-    }));
-  },
-
-  /* ── Seed a brand-new board with starter data ── */
-
-  async seedDefaultBoard(boardId) {
-    const defaultLists = [
-      { title: 'To Do',       position: 0 },
-      { title: 'In Progress', position: 1 },
-      { title: 'Done',        position: 2 },
-    ];
-
-    const { data: createdLists, error: listErr } = await sb
-      .from('lists')
-      .insert(defaultLists.map(l => ({ board_id: boardId, ...l })))
-      .select();
-    if (listErr) throw listErr;
-
-    createdLists.sort((a, b) => a.position - b.position);
-
-    const cardInserts = [
-      { li: 0, title: 'Research competitors',    description: 'Look at 3–5 similar tools and note their strengths.', priority: 'high',   position: 0 },
-      { li: 0, title: 'Write project brief',     description: '',                                                    priority: 'medium', position: 1 },
-      { li: 0, title: 'Set up repository',       description: '',                                                    priority: null,     position: 2 },
-      { li: 1, title: 'Design system tokens',    description: 'Colors, typography, spacing, and elevation.',         priority: 'medium', position: 0 },
-      { li: 1, title: 'Build kanban layout',     description: 'Lists, cards, drag-and-drop interactions.',           priority: 'high',   position: 1 },
-      { li: 2, title: 'Project kickoff meeting', description: '',                                                    priority: 'low',    position: 0 },
-      { li: 2, title: 'Define MVP scope',        description: '',                                                    priority: null,     position: 1 },
-    ].map(c => ({
-      board_id:    boardId,
-      list_id:     createdLists[c.li].id,
-      title:       c.title,
-      description: c.description || null,
-      priority:    c.priority,
-      position:    c.position,
-    }));
-
-    const { error: cardErr } = await sb.from('cards').insert(cardInserts);
-    if (cardErr) throw cardErr;
+      })),
+    };
   },
 };
 
@@ -1025,34 +917,21 @@ const Board = (() => {
   /* ── Init (called after sign-in) ── */
   async function init(user) {
     UI.showLoading();
-    UI.setLoading('Connecting to your board…', 20);
+    UI.setLoading('Loading your board…', 30);
 
     try {
-      UI.setLoading('Loading board…', 40);
-      const board = await Storage.getOrCreateBoard(user.id);
+      // One RPC call → board + lists + cards in a single round trip
+      const boardState = await Storage.initBoard(user.id);
 
-      UI.setLoading('Fetching your tasks…', 70);
-      let lists = await Storage.loadBoardState(board.id);
+      UI.setLoading('', 100);
 
-      // Seed only if the board is completely empty
-      if (lists.length === 0) {
-        UI.setLoading('Setting up default lists…', 60);
-        await Storage.seedDefaultBoard(board.id);
-        lists = await Storage.loadBoardState(board.id);
-      }
-
-      AppState.setState(() => ({
-        boardId:    board.id,
-        boardTitle: board.title,
-        lists,
-      }), true); // true = skip subscriber notify
-
+      AppState.setState(() => boardState, true); // skipNotify
       UI.hideLoading();
       UI.setSyncStatus('saved');
       render();
     } catch (err) {
       console.error('Board init error:', err);
-      UI.setLoading('Failed to load board. Check your Supabase config and RLS policies.', 100);
+      UI.setLoading('Failed to load. Check your Supabase config.', 100);
     }
   }
 

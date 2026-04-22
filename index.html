@@ -4,12 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>TaskDeck — Your Visual Task Board</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
-  <!-- Supabase JS SDK -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Supabase loaded as a non-blocking ES module -->
+  <script type="module" src="app.js"></script>
 </head>
 <body>
 
@@ -71,12 +68,12 @@
   <!-- ===== HEADER ===== -->
   <header class="app-header" id="appHeader">
     <div class="header-left">
-      <a href="index.html" class="logo">
+      <div class="logo">
         <span class="logo-mark">◈</span>
         <span class="logo-text">TaskDeck</span>
-      </a>
+      </div>
       <div class="board-title-wrap">
-        <h1 class="board-title" id="boardTitle" contenteditable="true" spellcheck="false">My TaskDeck Board</h1>
+        <h1 class="board-title" id="boardTitle" contenteditable="true" spellcheck="false">My Project Board</h1>
       </div>
     </div>
     <div class="header-right">
@@ -168,6 +165,6 @@
     </div>
   </template>
 
-  <script src="app.js"></script>
+
 </body>
 </html>
