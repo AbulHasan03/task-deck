@@ -18,6 +18,12 @@ jobs:
         uses: actions/checkout@v5
       - name: Setup Pages
         uses: actions/configure-pages@v5
+      - name: Cache busting
+        run: |
+          # Replace the cache-busting placeholder in index.html
+          # Using single quotes to prevent shell interference
+          sed -i 's/app.js?v=dev/app.js?v=${{ github.sha }}/g' index.html
+          sed -i 's/style.css?v=dev/style.css?v=${{ github.sha }}/g' index.html
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
