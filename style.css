@@ -1002,6 +1002,3 @@ h1, h2, h3 { font-family: var(--font-serif); font-weight: 500; letter-spacing: -
 /* ─────────────────────────────────────────────
    SIGN OUT BUTTON
    ───────────────────────────────────────────── */
-.btn-signout {
-  padding: 7px 10px;
-}
