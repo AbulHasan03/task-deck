@@ -13,8 +13,8 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
    CONFIGURATION
    ═══════════════════════════════════════════════════════════ */
 
-const SUPABASE_URL      = 'https://YOUR_PROJECT_ID.supabase.co';
-const SUPABASE_ANON_KEY = 'YOUR_ANON_PUBLIC_KEY';
+const SUPABASE_URL      = 'https://cagykqeunkljhldtkmqq.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_gQeFmfSyBsEsNKA8sL1X-Q_OHhaoxd6';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
