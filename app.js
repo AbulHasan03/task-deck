@@ -200,7 +200,7 @@ const Storage = {
       .from('boards')
       .select('id, title, color, created_at, updated_at')
       .eq('user_id', userId)
-      .order('created_at', { ascending: true });
+      .order('updated_at', { ascending: false });
     if (error) throw error;
     return data ?? [];
   },
@@ -216,7 +216,7 @@ const Storage = {
   },
 
   async updateBoardTitle(boardId, title) {
-    const { error } = await sb.from('boards').update({ title }).eq('id', boardId);
+    const { error } = await sb.from('boards').update({ title, updated_at: new Date().toISOString() }).eq('id', boardId);
     if (error) throw error;
   },
 
@@ -398,6 +398,7 @@ const Render = {
     el.className = 'board-card';
     el.dataset.boardId = board.id;
     const color = board.color || '#C97D4E';
+    el.title = `Open ${board.title}`; // Simple native hover preview
     el.innerHTML = `
       <div class="board-card-color" style="background:${color};"></div>
       <div class="board-card-body">
@@ -614,8 +615,16 @@ const Dashboard = (() => {
     UI.showLoading();
     UI.setLoading('Opening board…', 40);
     try {
+      // Update timestamp to support "Last Opened" sorting
+      await sb.from('boards').update({ updated_at: new Date().toISOString() }).eq('id', boardId);
+      
       const boardState = await Storage.initBoard(boardId);
-      AppState.setState(s => ({ ...s, view: 'board', ...boardState }), true);
+      AppState.setState(s => {
+        const b = s.boards.find(x => x.id === boardId);
+        if (b) b.updated_at = new Date().toISOString();
+        s.boards.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
+        return { ...s, view: 'board', ...boardState };
+      }, true);
       UI.hideLoading();
       UI.showBoard();
       Board.render();
@@ -963,7 +972,16 @@ const Board = (() => {
     const newTitle=boardTitleEl.textContent.trim();
     if(!newTitle){boardTitleEl.textContent=AppState.getState().boardTitle;return;}
     const{boardId}=AppState.getState();
-    AppState.setState(s=>{s.boardTitle=newTitle;return s;});
+    AppState.setState(s=>{
+      s.boardTitle=newTitle;
+      // Fix: Update the title in the boards list so Dashboard reflects the change
+      const b = s.boards.find(x => x.id === boardId);
+      if (b) {
+        b.title = newTitle;
+        b.updated_at = new Date().toISOString();
+      }
+      return s;
+    });
     UI.setSyncStatus('saving');
     try{await Storage.updateBoardTitle(boardId,newTitle);UI.setSyncStatus('saved');}
     catch(err){console.error(err);UI.setSyncStatus('error');}
@@ -1109,9 +1127,18 @@ function initAuthUI() {
    BOOT
    ═══════════════════════════════════════════════════════════ */
 
+let bootTimer = null;
+
 document.addEventListener('DOMContentLoaded', async () => {
   Theme.init();
   initAuthUI();
+
+  // Show recovery options if loading takes too long (> 7 seconds)
+  bootTimer = setTimeout(() => {
+    const recovery = document.getElementById('loadingRecovery');
+    if (recovery) recovery.style.display = 'flex';
+    UI.setLoading('Taking longer than usual...', 100);
+  }, 7000);
 
   // Home button → back to dashboard
   document.getElementById('logoHomeBtn')?.addEventListener('click', (e) => {
@@ -1121,19 +1148,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     Dashboard.render();
   });
 
+  // Force Reset functionality
+  document.getElementById('forceResetBtn')?.addEventListener('click', () => {
+    localStorage.clear();
+    Auth.signOut().finally(() => window.location.reload());
+  });
+
   await Auth.init(
     async user => {
-      // If app is already visible and we have a profile, ignore redundant auth events (like token refreshes)
-      if (UI.el('appShell')?.style.display === 'flex' && AppState.getState().profile) {
-        return;
-      }
-
       UI.hideAuth();
-
       UI.showLoading();
-      UI.setLoading('Loading your boards…', 30);
 
       try {
+        UI.setLoading('Fetching profile…', 40);
         // Load profile
         let profile = await Storage.getProfile(user.id);
         if (!profile) {
@@ -1144,6 +1171,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           profile.email = user.email;
         }
 
+        UI.setLoading('Syncing boards…', 70);
         // Load boards
         const boards = await Storage.getBoards(user.id);
 
@@ -1157,6 +1185,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           lists: [],
         }), true);
 
+        clearTimeout(bootTimer);
         UI.setProfile(profile);
         UI.setLoading('', 100);
         UI.hideLoading();
@@ -1165,16 +1194,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         Dashboard.render();
       } catch (err) {
         console.error('Boot error:', err);
-        UI.setLoading('Session error. Signing out…', 100);
-        // Clear potential "cache" issues by signing out and resetting UI
-        setTimeout(() => {
-          Auth.signOut().finally(() => {
-            window.location.reload(); // Hard reset to clear any stuck state
-          });
-        }, 2000);
+        UI.setLoading('Error loading data.', 100);
+        document.getElementById('loadingRecovery').style.display = 'flex';
       }
     },
     () => {
+      clearTimeout(bootTimer);
       UI.hideLoading();
       UI.hideApp();
       UI.showAuth();
