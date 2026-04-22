@@ -94,6 +94,7 @@ const UI = {
     this.el('boardContainer').style.display = 'none';
     this.el('boardBreadcrumb').style.display = 'none';
     this.el('addListBtn').style.display      = 'none';
+    this.el('boardSettingsBtn').style.display = 'none';
     this.el('syncStatus').style.display      = 'none';
   },
 
@@ -102,6 +103,7 @@ const UI = {
     this.el('boardContainer').style.display = '';
     this.el('boardBreadcrumb').style.display = '';
     this.el('addListBtn').style.display      = '';
+    this.el('boardSettingsBtn').style.display = '';
     this.el('syncStatus').style.display      = '';
   },
 
@@ -198,7 +200,7 @@ const Storage = {
   async getBoards(userId) {
     const { data, error } = await sb
       .from('boards')
-      .select('id, title, color, created_at, updated_at')
+      .select('id, title, color, created_at, updated_at, is_pinned')
       .eq('user_id', userId)
       .order('updated_at', { ascending: false });
     if (error) throw error;
@@ -217,6 +219,16 @@ const Storage = {
 
   async updateBoardTitle(boardId, title) {
     const { error } = await sb.from('boards').update({ title, updated_at: new Date().toISOString() }).eq('id', boardId);
+    if (error) throw error;
+  },
+
+  async updateBoardColor(boardId, color) {
+    const { error } = await sb.from('boards').update({ color, updated_at: new Date().toISOString() }).eq('id', boardId);
+    if (error) throw error;
+  },
+
+  async updateBoardPin(boardId, isPinned) {
+    const { error } = await sb.from('boards').update({ is_pinned: isPinned }).eq('id', boardId);
     if (error) throw error;
   },
 
@@ -322,6 +334,8 @@ const AppState = (() => {
     profile:    null,
     boards:     [],
     boardId:    null,
+    searchQuery: '',
+    sortOrder:   'recent', // 'recent' | 'oldest' | 'alpha' | 'alpha-rev'
     boardTitle: '',
     boardColor: '#C97D4E',
     lists:      [],
@@ -406,6 +420,9 @@ const Render = {
         <div class="board-card-meta">${new Date(board.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
       </div>
       <div class="board-card-actions">
+        <button class="board-card-pin ${board.is_pinned ? 'active' : ''}" data-board-pin="${board.id}" aria-label="${board.is_pinned ? 'Unpin' : 'Pin'} board" title="${board.is_pinned ? 'Unpin' : 'Pin'} board">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M12.5 5.5l-3-3M6.5 12.5l-3-3M4 12l2-2M10 4l2-2M5 5l6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
         <button class="board-card-delete" data-board-delete="${board.id}" aria-label="Delete board" title="Delete board">
           <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M2 4h12l-1.5 9H3.5L2 4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M5.5 2h5M1 4h14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
         </button>
@@ -586,24 +603,52 @@ const Dashboard = (() => {
   const createBoardBtn = document.getElementById('createBoardBtn');
   const newBoardName  = document.getElementById('newBoardName');
   const colorPicker   = document.getElementById('boardColorPicker');
+  const searchInput   = document.getElementById('boardSearch');
+  const sortSelect    = document.getElementById('boardSort');
+  const heading       = document.getElementById('newBoardModalHeading');
   let selectedColor   = '#C97D4E';
+  let editMode        = false;
 
   function render() {
-    const { boards } = AppState.getState();
+    const { boards, searchQuery, sortOrder } = AppState.getState();
     grid.innerHTML = '';
 
-    boards.forEach(board => {
+    // Filter and Sort logic
+    let filtered = boards.filter(b => b.title.toLowerCase().includes(searchQuery.toLowerCase()));
+    
+    filtered.sort((a, b) => {
+      const pA = !!a.is_pinned;
+      const pB = !!b.is_pinned;
+      if (pA && !pB) return -1;
+      if (!pA && pB) return 1;
+
+      if (sortOrder === 'recent')    return new Date(b.updated_at) - new Date(a.updated_at);
+      if (sortOrder === 'oldest')    return new Date(a.created_at) - new Date(b.created_at);
+      if (sortOrder === 'alpha')     return a.title.localeCompare(b.title);
+      if (sortOrder === 'alpha-rev') return b.title.localeCompare(a.title);
+      return 0;
+    });
+
+    filtered.forEach(board => {
       const card = Render.boardCard(board);
       card.addEventListener('click', e => {
-        if (e.target.closest('[data-board-delete]')) return;
+        if (e.target.closest('[data-board-delete]') || e.target.closest('[data-board-pin]')) return;
         openBoard(board.id);
       });
       grid.appendChild(card);
     });
+    
+    if (filtered.length === 0 && searchQuery) {
+      const empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.style.gridColumn = '1 / -1';
+      empty.innerHTML = `<div class="empty-state-text">No boards found matching "${searchQuery}"</div>`;
+      grid.appendChild(empty);
+    }
 
     // "New board" placeholder card
     const addCard = document.createElement('div');
-    addCard.className = 'board-card board-card-new';
+    addCard.className = 'board-card-new';
     addCard.innerHTML = `
       <svg width="22" height="22" viewBox="0 0 16 16" fill="none"><path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
       <span>New Board</span>`;
@@ -635,7 +680,16 @@ const Dashboard = (() => {
   }
 
   function showNewBoardModal() {
+    editMode = false;
+    heading.textContent = 'New Board';
+    createBoardBtn.textContent = 'Create Board';
     newBoardName.value = '';
+    openModal();
+  }
+
+  function openModal() {
+    newBoardOverlay.classList.add('open');
+    newBoardName.focus();
     selectedColor = '#C97D4E';
     colorPicker.querySelectorAll('.color-swatch').forEach(s =>
       s.classList.toggle('active', s.dataset.color === selectedColor)
@@ -645,15 +699,47 @@ const Dashboard = (() => {
     document.body.style.overflow = 'hidden';
   }
 
+  function showEditBoardModal() {
+    const s = AppState.getState();
+    editMode = true;
+    heading.textContent = 'Board Settings';
+    createBoardBtn.textContent = 'Save Changes';
+    newBoardName.value = s.boardTitle;
+    selectedColor = s.boardColor;
+    openModal();
+  }
+
   function hideNewBoardModal() {
     newBoardOverlay.classList.remove('open');
     document.body.style.overflow = '';
   }
 
-  async function createBoard() {
+  async function handleBoardSubmit() {
     const title = newBoardName.value.trim();
     if (!title) { newBoardName.focus(); return; }
     hideNewBoardModal();
+
+    if (editMode) {
+      const { boardId } = AppState.getState();
+      UI.setSyncStatus('saving');
+      try {
+        await Storage.updateBoardTitle(boardId, title);
+        await Storage.updateBoardColor(boardId, selectedColor);
+        AppState.setState(s => {
+          s.boardTitle = title;
+          s.boardColor = selectedColor;
+          const b = s.boards.find(x => x.id === boardId);
+          if (b) { b.title = title; b.color = selectedColor; b.updated_at = new Date().toISOString(); }
+          return s;
+        });
+        UI.setSyncStatus('saved');
+        Board.render(); // Refresh board view to show new color/title
+      } catch (err) {
+        console.error(err);
+        UI.setSyncStatus('error');
+      }
+      return;
+    }
 
     const userId = Auth.getUserId();
     UI.setSyncStatus('saving');
@@ -689,19 +775,48 @@ const Dashboard = (() => {
     );
   });
 
-  // Delete board button (delegated)
+  async function togglePin(boardId) {
+    const board = AppState.getState().boards.find(b => b.id === boardId);
+    if (!board) return;
+    const newState = !board.is_pinned;
+    
+    AppState.setState(s => {
+      const b = s.boards.find(x => x.id === boardId);
+      if (b) b.is_pinned = newState;
+      return s;
+    });
+    
+    UI.setSyncStatus('saving');
+    try {
+      await Storage.updateBoardPin(boardId, newState);
+      UI.setSyncStatus('saved');
+    } catch (err) {
+      console.error(err);
+      UI.setSyncStatus('error');
+    }
+  }
+
   grid?.addEventListener('click', e => {
-    const btn = e.target.closest('[data-board-delete]');
-    if (btn) deleteBoard(btn.dataset.boardDelete);
+    const delBtn = e.target.closest('[data-board-delete]');
+    if (delBtn) { deleteBoard(delBtn.dataset.boardDelete); return; }
+    
+    const pinBtn = e.target.closest('[data-board-pin]');
+    if (pinBtn) togglePin(pinBtn.dataset.boardPin);
   });
 
+  searchInput?.addEventListener('input', e => AppState.setState(s => { s.searchQuery = e.target.value; return s; }));
+  sortSelect?.addEventListener('change', e => AppState.setState(s => { s.sortOrder = e.target.value; return s; }));
+
   newBoardBtn?.addEventListener('click', showNewBoardModal);
+  document.getElementById('boardSettingsBtn')?.addEventListener('click', showEditBoardModal);
+  
   newBoardClose?.addEventListener('click', hideNewBoardModal);
   newBoardCancel?.addEventListener('click', hideNewBoardModal);
-  createBoardBtn?.addEventListener('click', createBoard);
+  createBoardBtn?.addEventListener('click', handleBoardSubmit);
+  
   newBoardOverlay?.addEventListener('click', e => { if (e.target === newBoardOverlay) hideNewBoardModal(); });
-  newBoardName?.addEventListener('keydown', e => { if (e.key === 'Enter') createBoard(); if (e.key === 'Escape') hideNewBoardModal(); });
-
+  newBoardName?.addEventListener('keydown', e => { if (e.key === 'Enter') handleBoardSubmit(); if (e.key === 'Escape') hideNewBoardModal(); });
+  
   AppState.subscribe(state => { if (state.view === 'dashboard') render(); });
 
   return { render, openBoard };

@@ -92,6 +92,10 @@
           <span class="sync-dot" id="syncDot"></span>
           <span class="sync-label" id="syncLabel">Saved</span>
         </div>
+        <button class="btn-ghost" id="boardSettingsBtn" aria-label="Board settings" style="display:none;">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 10a2 2 0 100-4 2 2 0 000 4z" fill="currentColor"/><path d="M8 1a7 7 0 100 14A7 7 0 008 1zm0 12.5a5.5 5.5 0 110-11 5.5 5.5 0 010 11z" fill="currentColor"/></svg>
+          Settings
+        </button>
         <button class="btn-ghost" id="addListBtn" aria-label="Add new list" style="display:none;">
           <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
           New List
@@ -152,6 +156,18 @@
       <div class="dashboard-inner">
         <div class="dashboard-header">
           <h2 class="dashboard-title">My Boards</h2>
+          <div class="dashboard-controls">
+            <div class="search-box">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" class="search-icon"><path d="M7 13A6 6 0 107 1a6 6 0 000 12zM11.5 11.5L15 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              <input type="text" id="boardSearch" placeholder="Search boards..." />
+            </div>
+            <select id="boardSort" class="sort-select">
+              <option value="recent">Most Recent</option>
+              <option value="oldest">Oldest First</option>
+              <option value="alpha">Alphabetical (A-Z)</option>
+              <option value="alpha-rev">Alphabetical (Z-A)</option>
+            </select>
+          </div>
           <button class="btn-primary" id="newBoardBtn">
             <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
             New Board
@@ -225,7 +241,7 @@
   <div class="modal-overlay" id="newBoardOverlay" role="dialog" aria-modal="true" aria-labelledby="newBoardTitle">
     <div class="modal modal-sm" id="newBoardModal">
       <div class="modal-header">
-        <h2 class="modal-card-title" id="newBoardTitle" style="cursor:default;">New Board</h2>
+        <h2 class="modal-card-title" id="newBoardModalHeading" style="cursor:default;">New Board</h2>
         <button class="modal-close" id="newBoardClose" aria-label="Close">
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2 2l14 14M16 2L2 16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
         </button>

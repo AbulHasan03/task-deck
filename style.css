@@ -351,11 +351,32 @@ button { font-family: var(--font-sans); }
 .dashboard-inner { max-width: 900px; margin: 0 auto; padding: 0 28px; }
 
 .dashboard-header {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 24px;
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap;
+  gap: 16px; margin-bottom: 24px;
 }
 .dashboard-title {
   font-family: var(--font-serif); font-size: 1.6rem; font-weight: 500; color: var(--ink);
+}
+.dashboard-controls { display: flex; align-items: center; gap: 12px; flex: 1; justify-content: flex-end; }
+
+.search-box { position: relative; width: 100%; max-width: 240px; }
+.search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--ink-soft); pointer-events: none; }
+.search-box input {
+  width: 100%; padding: 8px 12px 8px 32px; background: var(--canvas-card); border: 1.5px solid var(--list-border);
+  border-radius: var(--radius-sm); font-size: 0.85rem; color: var(--ink); outline: none; transition: var(--transition);
+}
+.search-box input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
+
+.sort-select {
+  padding: 8px 12px; background: var(--canvas-card); border: 1.5px solid var(--list-border);
+  border-radius: var(--radius-sm); font-size: 0.85rem; color: var(--ink-mid); outline: none; cursor: pointer;
+}
+.sort-select:focus { border-color: var(--accent); }
+
+@media (max-width: 600px) {
+  .dashboard-header { flex-direction: column; align-items: stretch; }
+  .dashboard-controls { flex-direction: column; align-items: stretch; }
+  .search-box { max-width: none; }
 }
 
 .btn-primary {
@@ -396,15 +417,24 @@ button { font-family: var(--font-sans); }
 .board-card-actions {
   position: absolute; top: 14px; right: 10px;
   opacity: 0; transition: opacity 0.15s;
+  display: flex; gap: 4px;
 }
 .board-card:hover .board-card-actions { opacity: 1; }
-.board-card-delete {
+.board-card-delete, .board-card-pin {
   background: var(--canvas-card); border: 1px solid var(--list-border);
   border-radius: 6px; padding: 4px 6px;
   color: var(--ink-soft); cursor: pointer;
   display: flex; align-items: center; transition: var(--transition);
 }
 .board-card-delete:hover { background: var(--red-light); color: var(--red); border-color: var(--red); }
+
+.board-card-pin:hover { background: var(--accent-light); color: var(--accent); border-color: var(--accent); }
+.board-card-pin.active { background: var(--accent); color: var(--canvas); border-color: var(--accent); }
+
+/* Persistence: Keep actions visible if board is pinned, but hide non-relevant buttons when not hovering */
+.board-card:has(.board-card-pin.active) .board-card-actions { opacity: 1; }
+.board-card:not(:hover) .board-card-delete { display: none; }
+.board-card:not(:hover) .board-card-pin:not(.active) { display: none; }
 
 /* "New board" placeholder card */
 .board-card-new {
