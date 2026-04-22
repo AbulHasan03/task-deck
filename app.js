@@ -43,9 +43,10 @@ const Theme = (() => {
 
   function init() {
     apply(currentTheme);
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-      if (currentTheme === 'system') apply('system');
-    });
+    const m = window.matchMedia?.('(prefers-color-scheme: dark)');
+    const handler = () => { if (currentTheme === 'system') apply('system'); };
+    if (m?.addEventListener) m.addEventListener('change', handler);
+    else if (m?.addListener) m.addListener(handler); // Fallback for older Safari
   }
 
   function get() { return currentTheme; }
@@ -138,6 +139,10 @@ const Auth = (() => {
 
   async function init(onSignedIn, onSignedOut) {
     let initialized = false;
+
+    // Check for existing session immediately to prevent hangs on refresh
+    const { data: { session } } = await sb.auth.getSession();
+
     sb.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         currentUser = session.user;
@@ -151,6 +156,14 @@ const Auth = (() => {
         onSignedOut();
       }
     });
+
+    if (session?.user) {
+      currentUser = session.user;
+      initialized = true;
+      await onSignedIn(currentUser);
+    } else if (!session && !initialized) {
+      onSignedOut();
+    }
   }
 
   async function signIn(email, password) {
@@ -1249,15 +1262,19 @@ function initAuthUI() {
 let bootTimer = null;
 let isBooting = false;
 
-function startBootTimer() {
+function startBootTimer(isDataSync = false) {
   if (bootTimer) clearTimeout(bootTimer);
   const recovery = document.getElementById('loadingRecovery');
   if (recovery) recovery.style.display = 'none';
   
+  const msg = isDataSync ? 'Data sync is taking longer than usual...' : 'App startup is taking longer than usual...';
+
   bootTimer = setTimeout(() => {
     const rec = document.getElementById('loadingRecovery');
-    if (rec) rec.style.display = 'flex';
-    UI.setLoading('Taking longer than usual...', 100);
+    if (rec) {
+      rec.style.display = 'flex';
+      UI.setLoading(msg, 100);
+    }
   }, 7000);
 }
 
@@ -1265,6 +1282,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   Theme.init();
   initAuthUI();
 
+  // Show loading immediately to provide visual feedback and prevent "black screen"
+  UI.showLoading();
+  UI.setLoading('Starting TaskDeck…', 10);
   startBootTimer();
 
   // Home button → back to dashboard
@@ -1286,12 +1306,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (isBooting) return;
       isBooting = true;
       
-      startBootTimer();
+      // Restart timer for the data-fetching phase
+      startBootTimer(true);
+      
       UI.hideAuth();
-      UI.showLoading();
 
       try {
-        UI.setLoading('Loading profile…', 40);
+        UI.setLoading('Fetching profile…', 40);
         // Load profile
         let profile = await Storage.getProfile(user.id);
         if (!profile) {
