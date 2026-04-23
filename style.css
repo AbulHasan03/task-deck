@@ -444,6 +444,10 @@ button { font-family: var(--font-sans); }
 .board-card-body  { padding: 14px 16px 12px; }
 .board-card-title { font-size: 0.95rem; font-weight: 600; color: var(--ink); margin-bottom: 4px; }
 .board-card-meta  { font-size: 0.75rem; color: var(--ink-soft); }
+.board-card-perm  { 
+  font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--accent); margin-top: 4px;
+}
 
 .board-card-actions {
   position: absolute; top: 14px; right: 10px;

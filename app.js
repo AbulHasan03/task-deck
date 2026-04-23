@@ -99,6 +99,15 @@ const UI = {
     this.el('boardSettingsBtn').style.display = 'none';
     this.el('syncStatus').style.display      = 'none';
     this.el('headerTabs').style.display      = '';
+    this.el('messagesView').style.display    = 'none';
+  },
+
+  showMessages() {
+    this.el('dashboard').style.display      = 'none';
+    this.el('messagesView').style.display   = 'flex';
+    this.el('boardContainer').style.display = 'none';
+    this.el('headerTabs').style.display      = '';
+    this.el('syncStatus').style.display      = 'none';
   },
 
   showBoard() {
@@ -108,6 +117,7 @@ const UI = {
     this.el('addListBtn').style.display      = '';
     this.el('boardSettingsBtn').style.display = '';
     this.el('syncStatus').style.display      = '';
+    this.el('messagesView').style.display    = 'none';
     this.el('headerTabs').style.display      = 'none';
   },
 
@@ -458,9 +468,12 @@ const Storage = {
 
 const AppState = (() => {
   let state = {
-    view:       'dashboard', // 'dashboard' | 'board'
+    view:       'dashboard', // 'dashboard' | 'board' | 'messages'
+    tab:        'boards',    // 'boards' | 'shared' | 'groups' | 'messages'
     profile:    null,
     boards:     [],
+    sharedBoards: [],
+    groups:     [],
     boardId:    null,
     searchQuery: '',
     sortOrder:   'recent', // 'recent' | 'oldest' | 'alpha' | 'alpha-rev'
@@ -540,20 +553,22 @@ const Render = {
     el.className = 'board-card';
     el.dataset.boardId = board.id;
     const color = board.color || '#C97D4E';
+    const isShared = !!board.permission_level;
     el.title = `Open ${board.title}`; // Simple native hover preview
     el.innerHTML = `
       <div class="board-card-color" style="background:${color};"></div>
       <div class="board-card-body">
         <div class="board-card-title">${this.esc(board.title)}</div>
         <div class="board-card-meta">${new Date(board.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+        ${isShared ? `<div class="board-card-perm">${board.permission_level} access</div>` : ''}
       </div>
       <div class="board-card-actions">
         <button class="board-card-pin ${board.is_pinned ? 'active' : ''}" data-board-pin="${board.id}" aria-label="${board.is_pinned ? 'Unpin' : 'Pin'} board" title="${board.is_pinned ? 'Unpin' : 'Pin'} board">
           <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M12.5 5.5l-3-3M6.5 12.5l-3-3M4 12l2-2M10 4l2-2M5 5l6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
-        <button class="board-card-delete" data-board-delete="${board.id}" aria-label="Delete board" title="Delete board">
+        ${!isShared ? `<button class="board-card-delete" data-board-delete="${board.id}" aria-label="Delete board" title="Delete board">
           <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M2 4h12l-1.5 9H3.5L2 4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M5.5 2h5M1 4h14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-        </button>
+        </button>` : `<button class="board-card-pin" id="shareBoardBtnSmall" data-board-share="${board.id}" title="Share settings">🌐</button>`}
       </div>`;
     return el;
   },
@@ -864,20 +879,22 @@ const Dashboard = (() => {
   const heading       = document.getElementById('newBoardModalHeading');
   let selectedColor   = '#C97D4E';
   let editMode        = false;
-  let currentTab      = 'boards'; // Track active tab
 
   function render() {
-    const { boards, searchQuery, sortOrder } = AppState.getState();
+    const { boards, sharedBoards, searchQuery, sortOrder, tab } = AppState.getState();
     
-    // If grid is empty and boards exist, ensure they render
-    if (grid.children.length === 0 && boards.length > 0) {
-      grid.innerHTML = '';
-    } else if (grid.innerHTML === '') {
-      grid.innerHTML = ''; // Clear any stale content
+    if (tab === 'messages') {
+      UI.showMessages();
+      MessagesView.render();
+      return;
+    } else {
+      UI.showDashboard();
     }
 
+    const source = tab === 'shared' ? sharedBoards : boards;
+
     // Filter and Sort logic
-    let filtered = boards.filter(b => b.title.toLowerCase().includes(searchQuery.toLowerCase()));
+    let filtered = source.filter(b => b.title.toLowerCase().includes(searchQuery.toLowerCase()));
     
     filtered.sort((a, b) => {
       const pA = !!a.is_pinned;
@@ -1083,26 +1100,29 @@ const Dashboard = (() => {
   sortSelect?.addEventListener('change', e => AppState.setState(s => { s.sortOrder = e.target.value; return s; }));
 
   // Social tab switching
-  document.getElementById('headerTabs')?.addEventListener('click', e => {
+  document.getElementById('headerTabs')?.addEventListener('click', async e => {
     const tab = e.target.closest('.header-tab');
     if (!tab) return;
-    currentTab = tab.dataset.tab;
+    const tabKey = tab.dataset.tab;
+    
     document.querySelectorAll('.header-tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
     
-    // Update dashboard title and content based on tab
-    const dashTitle = document.getElementById('dashboardTitle');
-    if (dashTitle) {
-      dashTitle.textContent = {
-        'boards': 'My Boards',
-        'shared': 'Shared with Me',
-        'groups': 'Groups',
-        'messages': 'Messages'
-      }[currentTab] || 'My Boards';
+    UI.el('dashboardTitle').textContent = tab.textContent;
+
+    if (tabKey === 'shared') {
+      const shared = await Storage.getSharedBoards();
+      AppState.setState(s => ({ ...s, tab: tabKey, sharedBoards: shared }));
+    } else if (tabKey === 'groups') {
+      const groups = await Storage.getUserGroups();
+      AppState.setState(s => ({ ...s, tab: tabKey, groups: groups }));
+    } else if (tabKey === 'messages') {
+      const groups = await Storage.getUserGroups();
+      AppState.setState(s => ({ ...s, tab: tabKey, groups: groups }));
+      MessagesView.init();
+    } else {
+      AppState.setState(s => ({ ...s, tab: tabKey }));
     }
-    
-    // TODO: Filter/display based on selected tab
-    render();
   });
 
   newBoardBtn?.addEventListener('click', showNewBoardModal);
@@ -1115,10 +1135,125 @@ const Dashboard = (() => {
   newBoardOverlay?.addEventListener('click', e => { if (e.target === newBoardOverlay) hideNewBoardModal(); });
   newBoardName?.addEventListener('keydown', e => { if (e.key === 'Enter') handleBoardSubmit(); if (e.key === 'Escape') hideNewBoardModal(); });
   
-  AppState.subscribe(state => { if (state.view === 'dashboard') render(); });
+  AppState.subscribe(state => { if (state.view === 'dashboard' || state.view === 'messages') render(); });
 
   return { render, openBoard };
 })();
+
+/* ═══════════════════════════════════════════════════════════
+   MESSAGES VIEW
+   ═══════════════════════════════════════════════════════════ */
+
+const MessagesView = (() => {
+  let activeGroupId = null;
+  let subscription  = null;
+
+  function init() {
+    const sendBtn = UI.el('sendMessageBtn');
+    const input   = UI.el('messageInput');
+
+    sendBtn?.onclick = async () => {
+      const content = input.value.trim();
+      if (!content || !activeGroupId) return;
+      input.value = '';
+      await Storage.sendMessage(activeGroupId, content);
+    };
+
+    UI.el('createGroupFromMessagesBtn').onclick = () => UI.el('createGroupOverlay').classList.add('open');
+  }
+
+  async function selectGroup(groupId, groupName) {
+    activeGroupId = groupId;
+    UI.el('messagesGroupTitle').textContent = groupName;
+    UI.el('messagesInputArea').style.display = 'flex';
+    
+    // Clear and Load
+    UI.el('messagesFeed').innerHTML = '<p class="loading-text">Loading messages...</p>';
+    const msgs = await Storage.getGroupMessages(groupId);
+    renderMessages(msgs.reverse());
+
+    // Subscribe
+    if (subscription) subscription.unsubscribe();
+    subscription = Storage.subscribeToMessages(groupId, async () => {
+      const updated = await Storage.getGroupMessages(groupId);
+      renderMessages(updated.reverse());
+    });
+  }
+
+  function renderMessages(msgs) {
+    const feed = UI.el('messagesFeed');
+    feed.innerHTML = msgs.map(m => `
+      <div class="message">
+        <div class="message-avatar">${(m.sender_name || '?').charAt(0)}</div>
+        <div class="message-content">
+          <div class="message-meta">${m.sender_name} • ${new Date(m.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+          <div class="message-text">${Render.esc(m.content)}</div>
+        </div>
+      </div>
+    `).join('');
+    feed.scrollTop = feed.scrollHeight;
+  }
+
+  function render() {
+    const { groups } = AppState.getState();
+    const list = UI.el('messageGroupsList');
+    list.innerHTML = groups.map(g => `
+      <button class="message-group-btn ${activeGroupId === g.id ? 'active' : ''}" data-id="${g.id}">
+        ${Render.esc(g.name)}
+      </button>
+    `).join('');
+
+    list.querySelectorAll('.message-group-btn').forEach(btn => {
+      btn.onclick = () => selectGroup(btn.dataset.id, btn.textContent.trim());
+    });
+  }
+
+  return { init, render };
+})();
+
+/* ═══════════════════════════════════════════════════════════
+   SHARING MODAL
+   ═══════════════════════════════════════════════════════════ */
+
+const BoardSharing = (() => {
+  const overlay = UI.el('shareBoardOverlay');
+  const emailIn = UI.el('shareEmail');
+  const permIn  = UI.el('sharePermission');
+  const list    = UI.el('shareList');
+  let activeBoardId = null;
+
+  async function open(boardId) {
+    activeBoardId = boardId;
+    overlay.classList.add('open');
+    loadShares();
+  }
+
+  async function loadShares() {
+    const shares = await Storage.getBoardShares(activeBoardId);
+    list.innerHTML = shares.map(s => `
+      <div class="share-item">
+        <div>
+          <div class="share-item-email">${s.profiles.email}</div>
+          <div class="share-item-perm">${s.permission_level}</div>
+        </div>
+        <button class="share-item-remove" onclick="BoardSharing.remove('${s.id}')">✕</button>
+      </div>
+    `).join('');
+  }
+
+  UI.el('shareBoardBtn').onclick = async () => {
+    const email = emailIn.value.trim();
+    if (!email) return;
+    await Storage.shareBoard(activeBoardId, email, permIn.value);
+    emailIn.value = '';
+    loadShares();
+  };
+
+  UI.el('shareBoardClose').onclick = () => overlay.classList.remove('open');
+
+  return { open, remove: async (id) => { await Storage.removeShare(id); loadShares(); } };
+})();
+window.BoardSharing = BoardSharing; // Expose for inline onclick
 
 /* ═══════════════════════════════════════════════════════════
    BOARD
