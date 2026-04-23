@@ -162,6 +162,7 @@ const Auth = (() => {
 
     sb.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
+        if (currentUser?.id === session.user.id) return;
         currentUser = session.user;
         await onSignedIn(currentUser);
       } else if (event === 'SIGNED_OUT') {
@@ -1764,6 +1765,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await Auth.init(
     async user => {
       if (isAppInitialized) return;
+      isAppInitialized = true;
       UI.hideAuth();
 
       try {
@@ -1798,15 +1800,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         UI.showApp();
         UI.showDashboard();
         Dashboard.render();
-        isAppInitialized = true;
       } catch (err) {
         console.error('Boot error:', err);
+        isAppInitialized = false;
         UI.setLoading('Failed to sync data. Please refresh.', 100);
         UI.authError('Session error. Please sign in again.');
         Auth.signOut();
       }
     },
     () => {
+      isAppInitialized = false;
+      AppState.setState(() => ({
+        view: 'dashboard',
+        profile: null,
+        boards: [],
+        boardId: null,
+        searchQuery: '',
+        sortOrder: 'recent',
+        boardTitle: '',
+        boardColor: '#C97D4E',
+        lists: [],
+      }), true);
       UI.hideLoading();
       UI.hideApp();
       UI.showAuth();
