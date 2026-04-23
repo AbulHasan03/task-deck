@@ -98,6 +98,7 @@ const UI = {
     this.el('addListBtn').style.display      = 'none';
     this.el('boardSettingsBtn').style.display = 'none';
     this.el('syncStatus').style.display      = 'none';
+    this.el('headerTabs').style.display      = '';
   },
 
   showBoard() {
@@ -107,6 +108,7 @@ const UI = {
     this.el('addListBtn').style.display      = '';
     this.el('boardSettingsBtn').style.display = '';
     this.el('syncStatus').style.display      = '';
+    this.el('headerTabs').style.display      = 'none';
   },
 
   setProfile(profile) {
@@ -354,6 +356,99 @@ const Storage = {
     const { error } = await sb.from('cards').delete().eq('list_id', listId);
     if (error) throw error;
   },
+
+  /* ── Board Sharing ── */
+
+  async shareBoard(boardId, userEmail, permission = 'view') {
+    const { data, error } = await sb.rpc('share_board', {
+      p_board_id: boardId,
+      p_user_email: userEmail,
+      p_permission: permission
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  async getSharedBoards() {
+    const { data, error } = await sb.rpc('get_shared_boards');
+    if (error) throw error;
+    return data ?? [];
+  },
+
+  async getBoardShares(boardId) {
+    const { data, error } = await sb
+      .from('board_shares')
+      .select('id, shared_with, permission_level, profiles!shared_with(display_name, email)')
+      .eq('board_id', boardId);
+    if (error) throw error;
+    return data ?? [];
+  },
+
+  async removeShare(shareId) {
+    const { error } = await sb.from('board_shares').delete().eq('id', shareId);
+    if (error) throw error;
+  },
+
+  /* ── Groups ── */
+
+  async createGroup(name, description = null) {
+    const { data, error } = await sb.rpc('create_group', {
+      p_name: name,
+      p_description: description
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  async getUserGroups() {
+    const { data, error } = await sb.rpc('get_user_groups');
+    if (error) throw error;
+    return data ?? [];
+  },
+
+  async addGroupMember(groupId, userEmail) {
+    const { data, error } = await sb.rpc('add_group_member', {
+      p_group_id: groupId,
+      p_user_email: userEmail
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  /* ── Messages ── */
+
+  async getGroupMessages(groupId, limit = 50) {
+    const { data, error } = await sb.rpc('get_group_messages', {
+      p_group_id: groupId,
+      p_limit: limit
+    });
+    if (error) throw error;
+    return data ?? [];
+  },
+
+  async sendMessage(groupId, content) {
+    const { data, error } = await sb.rpc('send_message', {
+      p_group_id: groupId,
+      p_content: content
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  // Real-time message subscription
+  subscribeToMessages(groupId, callback) {
+    return sb
+      .channel(`messages:${groupId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'messages',
+        filter: `group_id=eq.${groupId}`
+      }, payload => {
+        callback(payload.new);
+      })
+      .subscribe();
+  }
 };
 
 /* ═══════════════════════════════════════════════════════════
@@ -768,10 +863,17 @@ const Dashboard = (() => {
   const heading       = document.getElementById('newBoardModalHeading');
   let selectedColor   = '#C97D4E';
   let editMode        = false;
+  let currentTab      = 'boards'; // Track active tab
 
   function render() {
     const { boards, searchQuery, sortOrder } = AppState.getState();
-    grid.innerHTML = '';
+    
+    // If grid is empty and boards exist, ensure they render
+    if (grid.children.length === 0 && boards.length > 0) {
+      grid.innerHTML = '';
+    } else if (grid.innerHTML === '') {
+      grid.innerHTML = ''; // Clear any stale content
+    }
 
     // Filter and Sort logic
     let filtered = boards.filter(b => b.title.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -789,13 +891,16 @@ const Dashboard = (() => {
       return 0;
     });
 
+    // Build the grid content
+    const fragment = document.createDocumentFragment();
+    
     filtered.forEach(board => {
       const card = Render.boardCard(board);
       card.addEventListener('click', e => {
         if (e.target.closest('[data-board-delete]') || e.target.closest('[data-board-pin]')) return;
         openBoard(board.id);
       });
-      grid.appendChild(card);
+      fragment.appendChild(card);
     });
     
     if (filtered.length === 0 && searchQuery) {
@@ -803,7 +908,7 @@ const Dashboard = (() => {
       empty.className = 'empty-state';
       empty.style.gridColumn = '1 / -1';
       empty.innerHTML = `<div class="empty-state-text">No boards found matching "${searchQuery}"</div>`;
-      grid.appendChild(empty);
+      fragment.appendChild(empty);
     }
 
     // "New board" placeholder card
@@ -813,7 +918,11 @@ const Dashboard = (() => {
       <svg width="22" height="22" viewBox="0 0 16 16" fill="none"><path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
       <span>New Board</span>`;
     addCard.addEventListener('click', showNewBoardModal);
-    grid.appendChild(addCard);
+    fragment.appendChild(addCard);
+
+    // Clear and append all at once
+    grid.innerHTML = '';
+    grid.appendChild(fragment);
   }
 
   async function openBoard(boardId) {
@@ -971,6 +1080,29 @@ const Dashboard = (() => {
 
   searchInput?.addEventListener('input', e => AppState.setState(s => { s.searchQuery = e.target.value; return s; }));
   sortSelect?.addEventListener('change', e => AppState.setState(s => { s.sortOrder = e.target.value; return s; }));
+
+  // Social tab switching
+  document.getElementById('headerTabs')?.addEventListener('click', e => {
+    const tab = e.target.closest('.header-tab');
+    if (!tab) return;
+    currentTab = tab.dataset.tab;
+    document.querySelectorAll('.header-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    
+    // Update dashboard title and content based on tab
+    const dashTitle = document.getElementById('dashboardTitle');
+    if (dashTitle) {
+      dashTitle.textContent = {
+        'boards': 'My Boards',
+        'shared': 'Shared with Me',
+        'groups': 'Groups',
+        'messages': 'Messages'
+      }[currentTab] || 'My Boards';
+    }
+    
+    // TODO: Filter/display based on selected tab
+    render();
+  });
 
   newBoardBtn?.addEventListener('click', showNewBoardModal);
   document.getElementById('boardSettingsBtn')?.addEventListener('click', showEditBoardModal);
@@ -1479,6 +1611,20 @@ function initAuthUI() {
     UI.authError('');
     try { await Auth.signIn(email, password); }
     catch (err) { UI.authError(err.message || 'Sign in failed.'); }
+  });
+
+  // Google Sign-In
+  document.getElementById('signInGoogleBtn')?.addEventListener('click', async () => {
+    UI.authError('');
+    try {
+      const { data, error } = await sb.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.location.origin }
+      });
+      if (error) throw error;
+    } catch (err) { 
+      UI.authError(err.message || 'Google sign in failed. Make sure Google OAuth is configured in Supabase.'); 
+    }
   });
 
   document.getElementById('signUpBtn')?.addEventListener('click', async () => {

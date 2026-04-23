@@ -47,6 +47,8 @@
           <input type="password" id="signInPassword" placeholder="••••••••" autocomplete="current-password" />
         </div>
         <button class="btn-auth-primary" id="signInBtn">Sign In</button>
+        <div class="auth-divider">or</div>
+        <button class="btn-auth-google" id="signInGoogleBtn">Sign in with Google</button>
         <p class="auth-switch">No account? <a href="#" id="showSignUp">Create one</a></p>
       </div>
 
@@ -88,6 +90,12 @@
         </div>
       </div>
       <div class="header-right">
+        <div class="header-tabs" id="headerTabs" style="display:none;">
+          <button class="header-tab active" data-tab="boards" aria-label="Boards">Boards</button>
+          <button class="header-tab" data-tab="shared" aria-label="Shared with me">Shared</button>
+          <button class="header-tab" data-tab="groups" aria-label="Groups">Groups</button>
+          <button class="header-tab" data-tab="messages" aria-label="Messages">Messages</button>
+        </div>
         <div class="sync-status" id="syncStatus">
           <span class="sync-dot" id="syncDot"></span>
           <span class="sync-label" id="syncLabel">Saved</span>
@@ -175,7 +183,7 @@
     <main class="dashboard" id="dashboard">
       <div class="dashboard-inner">
         <div class="dashboard-header">
-          <h2 class="dashboard-title">My Boards</h2>
+          <h2 class="dashboard-title" id="dashboardTitle">My Boards</h2>
           <div class="dashboard-controls">
             <div class="search-box">
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" class="search-icon"><path d="M7 13A6 6 0 107 1a6 6 0 000 12zM11.5 11.5L15 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
@@ -358,6 +366,101 @@
       </div>
     </div>
   </template>
+
+  <!-- ===== SHARE BOARD MODAL ===== -->
+  <div class="modal-overlay" id="shareBoardOverlay" role="dialog" aria-modal="true" aria-labelledby="shareBoardTitle">
+    <div class="modal modal-sm" id="shareBoardModal">
+      <div class="modal-header">
+        <h2 class="modal-card-title" id="shareBoardTitle" style="cursor:default;">Share Board</h2>
+        <button class="modal-close" id="shareBoardClose" aria-label="Close">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2 2l14 14M16 2L2 16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section">
+          <label class="modal-label">Share with email</label>
+          <div class="share-input-row">
+            <input type="email" class="modal-input" id="shareEmail" placeholder="user@example.com" />
+            <select class="modal-input" id="sharePermission" style="flex: 0 0 120px;">
+              <option value="view">View only</option>
+              <option value="edit">Edit</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+          <button class="btn-primary" id="shareBoardBtn" style="width: 100%; margin-top: 12px;">Share</button>
+        </div>
+        <div class="modal-divider"></div>
+        <div class="modal-section">
+          <label class="modal-label">Shared with</label>
+          <div id="shareList" class="share-list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== GROUPS MODAL ===== -->
+  <div class="modal-overlay" id="groupsOverlay" role="dialog" aria-modal="true" aria-labelledby="groupsTitle">
+    <div class="modal" id="groupsModal">
+      <div class="modal-header">
+        <h2 class="modal-card-title" id="groupsTitle" style="cursor:default;">Groups</h2>
+        <button class="modal-close" id="groupsClose" aria-label="Close">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2 2l14 14M16 2L2 16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="modal-body" style="max-height: 60vh; overflow-y: auto;">
+        <div class="modal-section">
+          <button class="btn-primary" id="createGroupBtn" style="width: 100%; margin-bottom: 12px;">Create Group</button>
+        </div>
+        <div id="groupsList" class="groups-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== CREATE GROUP MODAL ===== -->
+  <div class="modal-overlay" id="createGroupOverlay" role="dialog" aria-modal="true" aria-labelledby="createGroupTitle">
+    <div class="modal modal-sm" id="createGroupModal">
+      <div class="modal-header">
+        <h2 class="modal-card-title" id="createGroupTitle" style="cursor:default;">New Group</h2>
+        <button class="modal-close" id="createGroupClose" aria-label="Close">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2 2l14 14M16 2L2 16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section">
+          <label class="modal-label">Group Name</label>
+          <input type="text" class="modal-input" id="groupName" placeholder="e.g. Marketing Team" maxlength="60" />
+        </div>
+        <div class="modal-section">
+          <label class="modal-label">Description</label>
+          <textarea class="modal-desc" id="groupDescription" placeholder="What is this group for?" rows="3"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-ghost" id="createGroupCancelBtn">Cancel</button>
+        <button class="btn-primary" id="confirmCreateGroupBtn">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MESSAGES VIEW ===== -->
+  <div id="messagesView" class="messages-view" style="display: none;">
+    <div class="messages-container">
+      <div class="messages-sidebar">
+        <button class="btn-primary" id="createGroupFromMessagesBtn" style="width: 100%; margin-bottom: 12px;">New Group</button>
+        <div id="messageGroupsList" class="message-groups-list"></div>
+      </div>
+      <div class="messages-main">
+        <div class="messages-header" id="messagesHeader">
+          <h3 id="messagesGroupTitle">Select a group</h3>
+        </div>
+        <div class="messages-feed" id="messagesFeed"></div>
+        <div class="messages-input-area" id="messagesInputArea" style="display: none;">
+          <textarea class="messages-input" id="messageInput" placeholder="Type a message…" rows="2"></textarea>
+          <button class="btn-primary" id="sendMessageBtn">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
 </body>
 </html>
