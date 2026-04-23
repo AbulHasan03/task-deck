@@ -138,30 +138,29 @@ const Auth = (() => {
   function getUserId() { return currentUser?.id ?? null; }
 
   async function init(onSignedIn, onSignedOut) {
-    let initialized = false;
-
-    // Check for existing session immediately to prevent hangs on refresh
+    // Check existing session first — this is the authoritative boot path.
+    // We intentionally call onSignedIn / onSignedOut from here and let
+    // onAuthStateChange only handle *subsequent* events (SIGNED_IN after
+    // a login form submit, SIGNED_OUT after sign-out). This prevents the
+    // double-invocation that caused the infinite loading screen.
     const { data: { session } } = await sb.auth.getSession();
 
     sb.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
+      if (event === 'SIGNED_IN' && session?.user) {
         currentUser = session.user;
-        if (!initialized || event === 'SIGNED_IN') {
-          initialized = true;
-          await onSignedIn(currentUser);
-        }
-      } else if (event === 'SIGNED_OUT' || (initialized && !session)) {
+        await onSignedIn(currentUser);
+      } else if (event === 'SIGNED_OUT') {
         currentUser = null;
-        initialized = true;
         onSignedOut();
       }
+      // TOKEN_REFRESHED and INITIAL_SESSION are intentionally ignored here;
+      // the initial boot is handled by the getSession() block below.
     });
 
     if (session?.user) {
       currentUser = session.user;
-      initialized = true;
       await onSignedIn(currentUser);
-    } else if (!session && !initialized) {
+    } else {
       onSignedOut();
     }
   }
@@ -270,8 +269,11 @@ const Storage = {
           title:       c.title,
           description: c.description || '',
           dueDate:     c.due_date    || '',
+          dueTime:     c.due_time    || '',
           priority:    c.priority    || '',
           position:    c.position,
+          phone:       c.phone       || '',
+          reminders:   c.reminders   || [],
         })),
       })),
     };
@@ -458,9 +460,10 @@ const Render = {
     if (card.dueDate) {
       const d = new Date(card.dueDate + 'T00:00:00');
       const today = new Date(); today.setHours(0,0,0,0);
+      const timeLabel = card.dueTime ? ` ${SMS.formatTime12(card.dueTime)}` : '';
       meta.push(`<span class="card-badge date ${d < today ? 'overdue' : ''}">
         <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="14" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M5 1v3M11 1v3M1 7h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>`);
+        ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}${timeLabel}</span>`);
     }
     if (card.description) meta.push(`<span class="card-badge desc">
       <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h8M2 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -521,7 +524,11 @@ const CardModal = (() => {
   const badgeEl   = document.getElementById('modalListBadge');
   const descEl    = document.getElementById('modalDesc');
   const dateEl    = document.getElementById('modalDate');
+  const timeEl    = document.getElementById('modalTime');
+  const phoneEl   = document.getElementById('modalPhone');
   const prioGroup = document.getElementById('priorityGroup');
+  const remList   = document.getElementById('modalReminderList');
+  const addRemBtn = document.getElementById('addReminderBtn');
 
   function open(cardId, listId) {
     const { lists } = AppState.getState();
@@ -535,12 +542,60 @@ const CardModal = (() => {
     badgeEl.textContent = `In: ${list.title}`;
     descEl.value        = card.description || '';
     dateEl.value        = card.dueDate     || '';
+    timeEl.value        = card.dueTime     || '';
+    phoneEl.value       = card.phone       || '';
     prioGroup.querySelectorAll('.priority-btn').forEach(b =>
       b.classList.toggle('active', b.dataset.priority === selectedPriority)
     );
+    renderReminders(card.reminders || []);
     overlay.classList.add('open');
+    // Populate time select (12h clock, 30-min steps)
+    if (timeEl && timeEl.options.length <= 1) {
+      timeEl.innerHTML = generateTimeOptions('');
+    }
+    timeEl.value = card.dueTime || '';
     titleEl.focus();
     document.body.style.overflow = 'hidden';
+  }
+
+  function renderReminders(reminders) {
+    if (!remList) return;
+    remList.innerHTML = '';
+    (reminders || []).forEach((r, i) => {
+      const row = document.createElement('div');
+      row.className = 'reminder-row';
+      row.innerHTML = `
+        <input type="date" class="modal-date reminder-date" value="${r.date || ''}" data-ri="${i}" />
+        <select class="modal-time-select reminder-time" data-ri="${i}">
+          ${generateTimeOptions(r.time || '')}
+        </select>
+        <button class="reminder-remove" data-ri="${i}" aria-label="Remove reminder">
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M2 2l12 12M14 2L2 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>`;
+      remList.appendChild(row);
+    });
+  }
+
+  function generateTimeOptions(selectedVal) {
+    let html = `<option value="">No time</option>`;
+    for (let h = 0; h < 24; h++) {
+      for (const m of [0, 30]) {
+        const hh   = h % 12 === 0 ? 12 : h % 12;
+        const mm   = m === 0 ? '00' : '30';
+        const ampm = h < 12 ? 'AM' : 'PM';
+        const val  = `${String(h).padStart(2,'0')}:${mm}`;
+        html += `<option value="${val}" ${selectedVal === val ? 'selected' : ''}>${hh}:${mm} ${ampm}</option>`;
+      }
+    }
+    return html;
+  }
+
+  function collectReminders() {
+    if (!remList) return [];
+    return [...remList.querySelectorAll('.reminder-row')].map(row => ({
+      date: row.querySelector('.reminder-date')?.value || '',
+      time: row.querySelector('.reminder-time')?.value || '',
+    })).filter(r => r.date);
   }
 
   function close() {
@@ -554,20 +609,37 @@ const CardModal = (() => {
     const newTitle = titleEl.textContent.trim();
     if (!newTitle) return;
     const cardId = currentCardId, listId = currentListId;
+    const reminders = collectReminders();
     const fields = {
       title:       newTitle,
       description: descEl.value.trim() || null,
       due_date:    dateEl.value        || null,
+      due_time:    timeEl.value        || null,
       priority:    selectedPriority    || null,
+      phone:       phoneEl.value.trim() || null,
+      reminders:   reminders,
     };
     AppState.setState(s => {
       const c = s.lists.find(l => l.id === listId)?.cards.find(c => c.id === cardId);
-      if (c) { c.title = newTitle; c.description = fields.description||''; c.dueDate = fields.due_date||''; c.priority = fields.priority||''; }
+      if (c) {
+        c.title       = newTitle;
+        c.description = fields.description || '';
+        c.dueDate     = fields.due_date    || '';
+        c.dueTime     = fields.due_time    || '';
+        c.priority    = fields.priority    || '';
+        c.phone       = fields.phone       || '';
+        c.reminders   = reminders;
+      }
       return s;
     });
     close();
     UI.setSyncStatus('saving');
-    try { await Storage.updateCard(cardId, fields); UI.setSyncStatus('saved'); }
+    try {
+      await Storage.updateCard(cardId, fields);
+      UI.setSyncStatus('saved');
+      // Schedule SMS reminders (no-op if RAPIDAPI_KEY not set)
+      SMS.dispatchCardReminders({ ...fields, title: newTitle, phone: fields.phone || '' }).catch(console.error);
+    }
     catch (e) { console.error(e); UI.setSyncStatus('error'); }
   }
 
@@ -602,6 +674,30 @@ const CardModal = (() => {
     prioGroup.querySelectorAll('.priority-btn').forEach(b =>
       b.classList.toggle('active', b.dataset.priority === selectedPriority)
     );
+  });
+
+  // Add a new reminder row
+  addRemBtn?.addEventListener('click', () => {
+    const current = collectReminders();
+    current.push({ date: '', time: '' });
+    renderReminders(current);
+  });
+
+  // Remove a reminder row
+  remList?.addEventListener('click', e => {
+    const btn = e.target.closest('.reminder-remove');
+    if (!btn) return;
+    const idx = parseInt(btn.dataset.ri, 10);
+    const current = collectReminders();
+    current.splice(idx, 1);
+    renderReminders(current);
+  });
+
+  // Populate time selects with 12h options on first use
+  timeEl?.addEventListener('focus', () => {
+    if (timeEl.options.length === 0) {
+      timeEl.innerHTML = generateTimeOptions(timeEl.dataset.val || '');
+    }
   });
 
   return { open, close };
@@ -991,7 +1087,7 @@ const Board = (() => {
       UI.setSyncStatus('saving');
       try{
         const c=await Storage.createCard(state.boardId,listId,title,pos);
-        AppState.setState(s=>{const l=s.lists.find(x=>x.id===listId);if(l)l.cards.push({id:c.id,title:c.title,description:'',dueDate:'',priority:'',position:c.position});return s;});
+        AppState.setState(s=>{const l=s.lists.find(x=>x.id===listId);if(l)l.cards.push({id:c.id,title:c.title,description:'',dueDate:'',dueTime:'',priority:'',phone:'',reminders:[],position:c.position});return s;});
         UI.setSyncStatus('saved');
       }catch(err){console.error(err);UI.setSyncStatus('error');}
     };
@@ -1256,11 +1352,98 @@ function initAuthUI() {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   BOOT
+   SMS REMINDERS (RapidAPI)
+   ═══════════════════════════════════════════════════════════
+   Replace RAPIDAPI_KEY with your key from rapidapi.com.
+   The default host targets the "sms77" (now "seven") API which
+   is widely available on RapidAPI. Swap host + endpoint for any
+   other SMS provider on the platform — the shape stays the same.
    ═══════════════════════════════════════════════════════════ */
 
+const SMS = (() => {
+  // ── Configure these two constants ──
+  const RAPIDAPI_KEY  = 'YOUR_RAPIDAPI_KEY_HERE';
+  const RAPIDAPI_HOST = 'sms77io.p.rapidapi.com'; // swap for any RapidAPI SMS provider
+
+  /**
+   * Send a single SMS.
+   * @param {string} to    – E.164 format, e.g. "+12125551234"
+   * @param {string} text  – Message body (max ~160 chars for a single segment)
+   */
+  async function send(to, text) {
+    if (!to || !text) throw new Error('SMS: missing "to" or "text"');
+    if (RAPIDAPI_KEY === 'YOUR_RAPIDAPI_KEY_HERE') {
+      console.warn('SMS: set your RAPIDAPI_KEY in app.js to enable real sending.');
+      return { ok: false, reason: 'no_key' };
+    }
+
+    const resp = await fetch('https://sms77io.p.rapidapi.com/sms', {
+      method: 'POST',
+      headers: {
+        'content-type':    'application/json',
+        'X-RapidAPI-Key':  RAPIDAPI_KEY,
+        'X-RapidAPI-Host': RAPIDAPI_HOST,
+      },
+      body: JSON.stringify({ to, text, from: 'TaskDeck' }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.text();
+      throw new Error(`SMS send failed: ${resp.status} ${err}`);
+    }
+    return resp.json();
+  }
+
+  /**
+   * Compute and dispatch all due reminders for the given card.
+   * Called on page load and whenever a card is saved.
+   * Skips reminders that are in the past or have no phone number.
+   * @param {object} card – card object with dueDate, dueTime, phone, reminders[]
+   */
+  async function dispatchCardReminders(card) {
+    const phone = card.phone?.trim();
+    if (!phone) return;
+
+    const now = Date.now();
+
+    // Main due-date reminder (1 hour before deadline)
+    if (card.dueDate) {
+      const timeStr = card.dueTime || '09:00';
+      const deadline = new Date(`${card.dueDate}T${timeStr}`).getTime();
+      const triggerAt = deadline - 60 * 60 * 1000; // 1 h before
+      if (triggerAt > now) {
+        const delay = triggerAt - now;
+        const msg = `TaskDeck reminder: "${card.title}" is due at ${formatTime12(timeStr)} on ${card.dueDate}.`;
+        setTimeout(() => send(phone, msg).catch(console.error), delay);
+      }
+    }
+
+    // Custom per-card reminders
+    (card.reminders || []).forEach(r => {
+      if (!r.date) return;
+      const t = new Date(`${r.date}T${r.time || '09:00'}`).getTime();
+      if (t > now) {
+        const delay = t - now;
+        const msg = `TaskDeck reminder: "${card.title}"${card.dueDate ? ` is due ${card.dueDate}` : ''}.`;
+        setTimeout(() => send(phone, msg).catch(console.error), delay);
+      }
+    });
+  }
+
+  function formatTime12(val) {
+    if (!val) return '';
+    const [h, m] = val.split(':').map(Number);
+    const ampm = h < 12 ? 'AM' : 'PM';
+    const hh   = h % 12 === 0 ? 12 : h % 12;
+    return `${hh}:${String(m).padStart(2,'0')} ${ampm}`;
+  }
+
+  return { send, dispatchCardReminders, formatTime12 };
+})();
+
+
+
 let bootTimer = null;
-let isBooting = false;
 
 function startBootTimer(isDataSync = false) {
   if (bootTimer) clearTimeout(bootTimer);
@@ -1303,13 +1486,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   await Auth.init(
     async user => {
-      if (isBooting) return;
-      isBooting = true;
-      
-      // Restart timer for the data-fetching phase
-      startBootTimer(true);
-      
       UI.hideAuth();
+      startBootTimer(true);
 
       try {
         UI.setLoading('Fetching profile…', 40);
@@ -1351,12 +1529,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         UI.setLoading('Data sync failed.', 100);
         clearTimeout(bootTimer);
         document.getElementById('loadingRecovery').style.display = 'flex';
-      } finally {
-        isBooting = false;
       }
     },
     () => {
-      isBooting = false;
       clearTimeout(bootTimer);
       UI.hideLoading();
       UI.hideApp();

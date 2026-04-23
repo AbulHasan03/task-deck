@@ -752,6 +752,46 @@ button { font-family: var(--font-sans); }
 .color-swatch:hover { transform: scale(1.15); }
 .color-swatch.active { border-color: var(--ink); box-shadow: 0 0 0 2px var(--canvas-card), 0 0 0 4px var(--ink); }
 
+/* Due date + time row layout */
+.modal-section-row { flex-direction: row !important; gap: 12px !important; align-items: flex-start; }
+.modal-section-half { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; }
+.modal-date { width: 100%; max-width: none; }
+
+/* Time select — matches modal-date styling */
+.modal-time-select {
+  width: 100%; padding: 9px 12px;
+  background: var(--canvas); border: 1.5px solid var(--ink-faint);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans); font-size: 0.88rem; color: var(--ink);
+  outline: none; cursor: pointer; transition: border-color 0.15s;
+  color-scheme: light dark; appearance: auto;
+}
+.modal-time-select:focus { border-color: var(--accent); }
+
+/* Reminder rows */
+.reminder-row {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 8px;
+}
+.reminder-row .reminder-date {
+  flex: 1; max-width: none; padding: 7px 10px; font-size: 0.84rem;
+}
+.reminder-row .reminder-time {
+  flex: 1; padding: 7px 10px; font-size: 0.84rem;
+}
+.reminder-remove {
+  background: none; border: none; cursor: pointer; color: var(--ink-soft);
+  padding: 6px; border-radius: 5px; display: flex; transition: var(--transition); flex-shrink: 0;
+}
+.reminder-remove:hover { background: var(--red-light); color: var(--red); }
+
+/* Add reminder button */
+.btn-add-reminder {
+  align-self: flex-start; margin-top: 4px;
+  font-size: 0.82rem; gap: 6px; color: var(--ink-soft);
+}
+.btn-add-reminder:hover { color: var(--accent); }
+
 /* ═══════════════════════════════════════════════════════════
    RESPONSIVE
    ═══════════════════════════════════════════════════════════ */
