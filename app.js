@@ -1744,34 +1744,14 @@ const SMS = (() => {
   return { send, dispatchCardReminders, formatTime12 };
 })();
 
-
-
-let bootTimer = null;
-
-function startBootTimer(isDataSync = false) {
-  if (bootTimer) clearTimeout(bootTimer);
-  const recovery = document.getElementById('loadingRecovery');
-  if (recovery) recovery.style.display = 'none';
-  
-  const msg = isDataSync ? 'Data sync is taking longer than usual...' : 'App startup is taking longer than usual...';
-
-  bootTimer = setTimeout(() => {
-    const rec = document.getElementById('loadingRecovery');
-    if (rec) {
-      rec.style.display = 'flex';
-      UI.setLoading(msg, 100);
-    }
-  }, 7000);
-}
+let isAppInitialized = false;
 
 document.addEventListener('DOMContentLoaded', async () => {
   Theme.init();
   initAuthUI();
 
-  // Show loading immediately to provide visual feedback and prevent "black screen"
   UI.showLoading();
   UI.setLoading('Starting TaskDeck…', 10);
-  startBootTimer();
 
   // Home button → back to dashboard
   document.getElementById('logoHomeBtn')?.addEventListener('click', (e) => {
@@ -1781,20 +1761,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     Dashboard.render();
   });
 
-  // Force Reset functionality
-  document.getElementById('forceResetBtn')?.addEventListener('click', () => {
-    localStorage.clear();
-    Auth.signOut().finally(() => window.location.reload());
-  });
-
   await Auth.init(
     async user => {
+      if (isAppInitialized) return;
       UI.hideAuth();
-      startBootTimer(true);
 
       try {
         UI.setLoading('Fetching profile…', 40);
-        // Load profile
         let profile = await Storage.getProfile(user.id);
         if (!profile) {
           UI.setLoading('Creating profile…', 50);
@@ -1806,7 +1779,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         UI.setLoading('Syncing boards…', 70);
-        // Load boards
         const boards = await Storage.getBoards(user.id);
 
         AppState.setState(() => ({
@@ -1822,20 +1794,19 @@ document.addEventListener('DOMContentLoaded', async () => {
         UI.setProfile(profile);
         UI.setLoading('Success', 100);
         
-        clearTimeout(bootTimer);
         UI.hideLoading();
         UI.showApp();
         UI.showDashboard();
         Dashboard.render();
+        isAppInitialized = true;
       } catch (err) {
         console.error('Boot error:', err);
-        UI.setLoading('Data sync failed.', 100);
-        clearTimeout(bootTimer);
-        document.getElementById('loadingRecovery').style.display = 'flex';
+        UI.setLoading('Failed to sync data. Please refresh.', 100);
+        UI.authError('Session error. Please sign in again.');
+        Auth.signOut();
       }
     },
     () => {
-      clearTimeout(bootTimer);
       UI.hideLoading();
       UI.hideApp();
       UI.showAuth();
