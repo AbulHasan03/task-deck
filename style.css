@@ -373,12 +373,6 @@ button { font-family: var(--font-sans); }
 }
 .sort-select:focus { border-color: var(--accent); }
 
-@media (max-width: 600px) {
-  .dashboard-header { flex-direction: column; align-items: stretch; }
-  .dashboard-controls { flex-direction: column; align-items: stretch; }
-  .search-box { max-width: none; }
-}
-
 .btn-primary {
   display: flex; align-items: center; gap: 6px;
   padding: 9px 18px;
@@ -705,7 +699,7 @@ button { font-family: var(--font-sans); }
 .modal-date {
   padding: 9px 12px; background: var(--canvas); border: 1.5px solid var(--ink-faint);
   border-radius: var(--radius-sm); font-family: var(--font-sans); font-size: 0.88rem; color: var(--ink);
-  outline: none; max-width: 200px; cursor: pointer; transition: border-color 0.15s;
+  outline: none; width: 100%; cursor: pointer; transition: border-color 0.15s;
   color-scheme: light dark;
 }
 .modal-date:focus { border-color: var(--accent); }
@@ -755,7 +749,6 @@ button { font-family: var(--font-sans); }
 /* Due date + time row layout */
 .modal-section-row { flex-direction: row !important; gap: 12px !important; align-items: flex-start; }
 .modal-section-half { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 0; }
-.modal-date { width: 100%; max-width: none; }
 
 /* Time select — matches modal-date styling */
 .modal-time-select {
@@ -793,16 +786,133 @@ button { font-family: var(--font-sans); }
 .btn-add-reminder:hover { color: var(--accent); }
 
 /* ═══════════════════════════════════════════════════════════
-   RESPONSIVE
+   PROFILE — SMS & PHONE ADDITIONS
    ═══════════════════════════════════════════════════════════ */
 
-@media (max-width: 768px) {
-  .app-header { padding: 0 16px; }
-  .board-scroll { padding: 0 14px; }
+.profile-sms-row { display: flex; flex-direction: column; gap: 10px; }
+.profile-sms-toggle-row { display: flex; align-items: center; justify-content: space-between; }
+.profile-sms-label { font-size: 0.84rem; color: var(--ink-mid); }
+
+/* Toggle switch */
+.sms-toggle {
+  width: 40px; height: 22px; border-radius: 100px; border: none;
+  background: var(--ink-faint); cursor: pointer; position: relative;
+  transition: background 0.2s; flex-shrink: 0; padding: 0;
+}
+.sms-toggle.on { background: var(--green); }
+.sms-toggle-knob {
+  display: block; width: 16px; height: 16px; border-radius: 50%;
+  background: white; position: absolute; top: 3px; left: 3px;
+  transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.sms-toggle.on .sms-toggle-knob { transform: translateX(18px); }
+
+.profile-phone-wrap { display: flex; flex-direction: column; gap: 4px; }
+.profile-phone-hint { font-size: 0.72rem; color: var(--ink-soft); padding: 0 2px; }
+
+/* SMS modal description */
+.sms-setup-desc {
+  font-size: 0.88rem; color: var(--ink-mid); line-height: 1.55;
+  margin-bottom: 4px;
+}
+
+/* Reminder SMS opt-in row in card modal */
+.reminder-sms-opt { margin-top: 8px; }
+.reminder-sms-label {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.84rem; color: var(--ink-mid); cursor: pointer;
+}
+.reminder-sms-label input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+.reminder-sms-nophone {
+  display: flex; align-items: center; gap: 6px; margin-top: 8px;
+  font-size: 0.78rem; color: var(--ink-soft);
+}
+.reminder-sms-nophone a { color: var(--accent); }
+.reminder-sms-nophone a:hover { text-decoration: underline; }
+
+/* ═══════════════════════════════════════════════════════════
+   RESPONSIVE — Mac (1280-1440px) + Mobile
+   ═══════════════════════════════════════════════════════════ */
+
+/* Mac-optimised defaults — tighten up spacing at typical laptop widths */
+@media (max-width: 1440px) {
+  .dashboard-inner { max-width: 860px; }
+  .boards-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
+}
+
+@media (max-width: 1200px) {
+  .dashboard-inner { max-width: 100%; padding: 0 24px; }
+  .list { width: 272px; }
+}
+
+/* Tablet */
+@media (max-width: 900px) {
+  .app-header { padding: 0 16px; gap: 10px; }
+  .logo-text  { display: none; } /* keep logo mark, hide wordmark */
+  .board-scroll { padding: 0 16px; gap: 12px; }
   .dashboard-inner { padding: 0 16px; }
-  .list { width: 264px; }
-  .modal { max-width: 100%; }
+  .list { width: 256px; }
+  .dashboard-header { flex-wrap: wrap; }
+  .dashboard-controls { flex: 0 0 100%; order: 3; justify-content: flex-start; }
+  .search-box { max-width: 200px; }
+  .modal { max-width: 480px; }
+  /* Date+time row stacks on narrow modals */
+  .modal-section-row { flex-direction: column !important; gap: 12px !important; }
+  .modal-section-half { width: 100%; }
+}
+
+/* Mobile */
+@media (max-width: 600px) {
+  html { font-size: 14px; }
+
+  /* Header */
+  .app-header { padding: 0 12px; height: 50px; gap: 8px; }
+  .logo-text  { display: none; }
+  .sync-label { display: none; } /* show only dot */
+  .header-right { gap: 8px; }
+  .btn-ghost { padding: 6px 8px; font-size: 0.8rem; }
+
+  /* Dashboard */
+  .dashboard { padding: 20px 0 32px; }
+  .dashboard-inner { padding: 0 12px; }
+  .dashboard-title { font-size: 1.3rem; }
+  .dashboard-header { flex-direction: column; align-items: stretch; gap: 12px; }
+  .dashboard-controls { flex-direction: column; align-items: stretch; }
+  .search-box { max-width: none; }
+  .boards-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+  .board-card-actions { opacity: 1; } /* always show on touch */
+
+  /* Board */
+  .board-container { padding: 12px 0; }
+  .board-scroll { padding: 0 12px; gap: 10px; }
+  .list { width: 240px; }
+  .list-header { padding: 11px 11px 7px; }
+  .cards-container { padding: 4px 8px; }
+  .card { padding: 9px 11px; }
+
+  /* Modals — sheet from bottom */
   .modal-overlay { align-items: flex-end; padding: 0; }
-  .modal { border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
-  .boards-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+  .modal {
+    max-width: 100%; border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    max-height: 90dvh; overflow-y: auto;
+  }
+  .modal-body { padding: 14px 16px; gap: 14px; }
+  .modal-header { padding: 16px 16px 12px; }
+  .modal-footer { padding: 10px 16px 24px; } /* 24px for home indicator */
+  .modal-section-row { flex-direction: column !important; gap: 10px !important; }
+  .modal-section-half { width: 100%; }
+  .modal-date { max-width: none; }
+  .priority-group { flex-wrap: wrap; }
+
+  /* Profile dropdown — full width on mobile */
+  .profile-dropdown { right: -4px; width: calc(100vw - 24px); max-width: 320px; }
+
+  /* Board breadcrumb — truncate long titles */
+  #boardTitle { max-width: 40vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+
+/* Very small phones */
+@media (max-width: 380px) {
+  .boards-grid { grid-template-columns: 1fr 1fr; }
+  .list { width: 216px; }
 }

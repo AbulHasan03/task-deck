@@ -113,6 +113,8 @@ const UI = {
     const initial = (profile?.display_name || profile?.email || '?').charAt(0).toUpperCase();
     const name    = profile?.display_name || '';
     const email   = profile?.email        || '';
+    const phone   = profile?.phone        || '';
+    const smsOn   = !!profile?.sms_enabled;
 
     const btn = this.el('profileBtn');
     const lg  = this.el('profileAvatarLg');
@@ -124,6 +126,17 @@ const UI = {
     if (n) n.textContent = name || '(no name set)';
     if (e) e.textContent = email;
     if (i) i.value       = name;
+
+    // Phone + SMS toggle
+    const pi = this.el('profilePhoneInput');
+    if (pi) pi.value = phone;
+    const toggle  = this.el('smsToggle');
+    const phoneWrap = this.el('profilePhoneWrap');
+    if (toggle) {
+      toggle.classList.toggle('on', smsOn);
+      toggle.setAttribute('aria-pressed', smsOn ? 'true' : 'false');
+    }
+    if (phoneWrap) phoneWrap.style.display = smsOn ? '' : 'none';
   },
 };
 
@@ -525,13 +538,16 @@ const CardModal = (() => {
   const descEl    = document.getElementById('modalDesc');
   const dateEl    = document.getElementById('modalDate');
   const timeEl    = document.getElementById('modalTime');
-  const phoneEl   = document.getElementById('modalPhone');
   const prioGroup = document.getElementById('priorityGroup');
   const remList   = document.getElementById('modalReminderList');
   const addRemBtn = document.getElementById('addReminderBtn');
+  const smsOpt    = document.getElementById('reminderSmsOpt');
+  const smsCheck  = document.getElementById('reminderSmsCheck');
+  const smsNophone= document.getElementById('reminderSmsNophone');
+  const addPhoneLink = document.getElementById('reminderAddPhone');
 
   function open(cardId, listId) {
-    const { lists } = AppState.getState();
+    const { lists, profile } = AppState.getState();
     const list = lists.find(l => l.id === listId);
     const card = list?.cards.find(c => c.id === cardId);
     if (!card) return;
@@ -542,12 +558,18 @@ const CardModal = (() => {
     badgeEl.textContent = `In: ${list.title}`;
     descEl.value        = card.description || '';
     dateEl.value        = card.dueDate     || '';
-    timeEl.value        = card.dueTime     || '';
-    phoneEl.value       = card.phone       || '';
     prioGroup.querySelectorAll('.priority-btn').forEach(b =>
       b.classList.toggle('active', b.dataset.priority === selectedPriority)
     );
     renderReminders(card.reminders || []);
+
+    // SMS opt-in state
+    const hasPhone  = !!(profile?.phone?.trim());
+    const smsOn     = !!profile?.sms_enabled;
+    if (smsOpt)     smsOpt.style.display     = hasPhone ? '' : 'none';
+    if (smsNophone) smsNophone.style.display  = hasPhone ? 'none' : '';
+    if (smsCheck)   smsCheck.checked          = smsOn && hasPhone;
+
     overlay.classList.add('open');
     // Populate time select (12h clock, 30-min steps)
     if (timeEl && timeEl.options.length <= 1) {
@@ -610,13 +632,14 @@ const CardModal = (() => {
     if (!newTitle) return;
     const cardId = currentCardId, listId = currentListId;
     const reminders = collectReminders();
+    const { profile } = AppState.getState();
+    const useSms = !!(smsCheck?.checked && profile?.phone && profile?.sms_enabled);
     const fields = {
       title:       newTitle,
       description: descEl.value.trim() || null,
       due_date:    dateEl.value        || null,
       due_time:    timeEl.value        || null,
       priority:    selectedPriority    || null,
-      phone:       phoneEl.value.trim() || null,
       reminders:   reminders,
     };
     AppState.setState(s => {
@@ -627,7 +650,6 @@ const CardModal = (() => {
         c.dueDate     = fields.due_date    || '';
         c.dueTime     = fields.due_time    || '';
         c.priority    = fields.priority    || '';
-        c.phone       = fields.phone       || '';
         c.reminders   = reminders;
       }
       return s;
@@ -637,9 +659,27 @@ const CardModal = (() => {
     try {
       await Storage.updateCard(cardId, fields);
       UI.setSyncStatus('saved');
-      // Schedule SMS reminders (no-op if RAPIDAPI_KEY not set)
-      SMS.dispatchCardReminders({ ...fields, title: newTitle, phone: fields.phone || '' }).catch(console.error);
+      if (useSms) {
+        SMS.dispatchCardReminders({
+          ...fields, title: newTitle,
+          phone: profile.phone,
+        }).catch(console.error);
+      }
     }
+    catch (e) { console.error(e); UI.setSyncStatus('error'); }
+  }
+
+  async function deleteCard() {
+    if (!currentCardId) return;
+    const cardId = currentCardId, listId = currentListId;
+    AppState.setState(s => {
+      const l = s.lists.find(x => x.id === listId);
+      if (l) l.cards = l.cards.filter(c => c.id !== cardId);
+      return s;
+    });
+    close();
+    UI.setSyncStatus('saving');
+    try { await Storage.deleteCard(cardId); UI.setSyncStatus('saved'); }
     catch (e) { console.error(e); UI.setSyncStatus('error'); }
   }
 
@@ -691,6 +731,13 @@ const CardModal = (() => {
     const current = collectReminders();
     current.splice(idx, 1);
     renderReminders(current);
+  });
+
+  // "Add a phone number" link → open SMS setup modal
+  addPhoneLink?.addEventListener('click', e => {
+    e.preventDefault();
+    close();
+    SmsSetup.open();
   });
 
   // Populate time selects with 12h options on first use
@@ -860,9 +907,14 @@ const Dashboard = (() => {
       const board = await Storage.createBoard(userId, title, selectedColor);
       // Seed default lists on the new board
       await Storage.seedBoard(board.id);
-      AppState.setState(s => { s.boards.push(board); return s; });
+      // Add to state + render dashboard first so card is visually present
+      AppState.setState(s => {
+        s.boards.unshift(board); // put new board at top
+        return s;
+      });
+      render(); // immediately repaint the grid
       UI.setSyncStatus('saved');
-      // Navigate directly into the new board
+      // Then navigate into it
       await openBoard(board.id);
     } catch (err) {
       console.error('Create board error:', err);
@@ -1230,22 +1282,79 @@ const Board = (() => {
 })();
 
 /* ═══════════════════════════════════════════════════════════
+   SMS SETUP MODAL
+   ═══════════════════════════════════════════════════════════ */
+
+const SmsSetup = (() => {
+  const overlay   = document.getElementById('smsSetupOverlay');
+  const phoneEl   = document.getElementById('smsSetupPhone');
+  const saveBtn   = document.getElementById('smsSetupSave');
+  const skipBtn   = document.getElementById('smsSetupSkip');
+  const closeBtn  = document.getElementById('smsSetupClose');
+
+  function open() {
+    if (!overlay) return;
+    const profile = AppState.getState().profile;
+    if (phoneEl) phoneEl.value = profile?.phone || '';
+    overlay.classList.add('open');
+    phoneEl?.focus();
+    document.body.style.overflow = 'hidden';
+  }
+
+  function close() {
+    overlay?.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+
+  async function saveAndEnable() {
+    const phone = phoneEl?.value.trim();
+    if (!phone) { phoneEl?.focus(); return; }
+    const userId = Auth.getUserId();
+    saveBtn.textContent = '…';
+    try {
+      await Storage.upsertProfile(userId, { phone, sms_enabled: true });
+      AppState.setState(s => {
+        if (s.profile) { s.profile.phone = phone; s.profile.sms_enabled = true; }
+        return s;
+      });
+      UI.setProfile(AppState.getState().profile);
+      close();
+    } catch (err) {
+      console.error(err);
+      saveBtn.textContent = 'Error';
+      setTimeout(() => { saveBtn.textContent = 'Save & Enable'; }, 1800);
+    }
+  }
+
+  saveBtn?.addEventListener('click', saveAndEnable);
+  skipBtn?.addEventListener('click', close);
+  closeBtn?.addEventListener('click', close);
+  overlay?.addEventListener('click', e => { if (e.target === overlay) close(); });
+  phoneEl?.addEventListener('keydown', e => { if (e.key === 'Enter') saveAndEnable(); if (e.key === 'Escape') close(); });
+
+  return { open, close };
+})();
+
+/* ═══════════════════════════════════════════════════════════
    PROFILE DROPDOWN
    ═══════════════════════════════════════════════════════════ */
 
 const ProfileMenu = (() => {
-  const wrap     = document.getElementById('profileWrap');
-  const btn      = document.getElementById('profileBtn');
-  const dropdown = document.getElementById('profileDropdown');
-  const saveBtn  = document.getElementById('saveNameBtn');
+  const wrap      = document.getElementById('profileWrap');
+  const btn       = document.getElementById('profileBtn');
+  const dropdown  = document.getElementById('profileDropdown');
+  const saveBtn   = document.getElementById('saveNameBtn');
   const nameInput = document.getElementById('profileNameInput');
+  const smsToggle = document.getElementById('smsToggle');
+  const phoneWrap = document.getElementById('profilePhoneWrap');
+  const phoneInput= document.getElementById('profilePhoneInput');
+  const savePhone = document.getElementById('savePhoneBtn');
   let open = false;
 
   function show() {
     open = true;
     dropdown.classList.add('open');
     btn.setAttribute('aria-expanded', 'true');
-    // Sync theme buttons
     Theme.apply(Theme.get());
   }
 
@@ -1291,6 +1400,54 @@ const ProfileMenu = (() => {
   });
 
   nameInput?.addEventListener('keydown', e => { if (e.key === 'Enter') saveBtn?.click(); });
+
+  // SMS toggle
+  smsToggle?.addEventListener('click', async () => {
+    const profile = AppState.getState().profile;
+    const currentlyOn = !!profile?.sms_enabled;
+
+    if (!currentlyOn) {
+      // Turning ON — if no phone yet, show setup modal
+      if (!profile?.phone?.trim()) {
+        hide();
+        SmsSetup.open();
+        return;
+      }
+      // Has phone already — just enable
+      await setSmsEnabled(true);
+    } else {
+      await setSmsEnabled(false);
+    }
+  });
+
+  async function setSmsEnabled(val) {
+    const userId = Auth.getUserId();
+    try {
+      await Storage.upsertProfile(userId, { sms_enabled: val });
+      AppState.setState(s => { if (s.profile) s.profile.sms_enabled = val; return s; });
+      UI.setProfile(AppState.getState().profile);
+    } catch (err) { console.error(err); }
+  }
+
+  // Save phone number
+  savePhone?.addEventListener('click', async () => {
+    const phone = phoneInput?.value.trim();
+    const userId = Auth.getUserId();
+    savePhone.textContent = '…';
+    try {
+      await Storage.upsertProfile(userId, { phone });
+      AppState.setState(s => { if (s.profile) s.profile.phone = phone; return s; });
+      UI.setProfile(AppState.getState().profile);
+      savePhone.textContent = 'Saved!';
+      setTimeout(() => { savePhone.textContent = 'Save'; }, 1800);
+    } catch (err) {
+      console.error(err);
+      savePhone.textContent = 'Error';
+      setTimeout(() => { savePhone.textContent = 'Save'; }, 1800);
+    }
+  });
+
+  phoneInput?.addEventListener('keydown', e => { if (e.key === 'Enter') savePhone?.click(); });
 
   // Sign out
   document.getElementById('signOutBtn')?.addEventListener('click', async () => {
@@ -1362,7 +1519,7 @@ function initAuthUI() {
 
 const SMS = (() => {
   // ── Configure these two constants ──
-  const RAPIDAPI_KEY  = 'dcb909daaemshe763334aa4fc735p1b55a3jsn368557abcfad';
+  const RAPIDAPI_KEY  = 'YOUR_RAPIDAPI_KEY_HERE';
   const RAPIDAPI_HOST = 'sms77io.p.rapidapi.com'; // swap for any RapidAPI SMS provider
 
   /**
