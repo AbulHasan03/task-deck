@@ -1899,7 +1899,7 @@ const SMS = (() => {
         'X-RapidAPI-Key':  RAPIDAPI_KEY,
         'X-RapidAPI-Host': RAPIDAPI_HOST,
       },
-      body: JSON.stringify({ to, text, from: 'TaskDeck' }),
+      body: JSON.stringify({ to, text, from: '15551234567' }),
     });
 
     if (!resp.ok) {
