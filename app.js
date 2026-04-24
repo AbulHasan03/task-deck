@@ -1877,7 +1877,7 @@ function initAuthUI() {
 
 const SMS = (() => {
   // ── Configure these two constants ──
-  const RAPIDAPI_KEY  = 'YOUR_RAPIDAPI_KEY_HERE';
+  const RAPIDAPI_KEY  = 'dcb909daaemshe763334aa4fc735p1b55a3jsn368557abcfad';
   const RAPIDAPI_HOST = 'sms77io.p.rapidapi.com'; // swap for any RapidAPI SMS provider
 
   /**
