@@ -97,6 +97,7 @@ const UI = {
     this.el('boardBreadcrumb').style.display = 'none';
     this.el('addListBtn').style.display      = 'none';
     this.el('boardSettingsBtn').style.display = 'none';
+    this.el('shareBoardFromBoardBtn') && (this.el('shareBoardFromBoardBtn').style.display = 'none');
     this.el('syncStatus').style.display      = 'none';
     this.el('headerTabs').style.display      = '';
     this.el('messagesView').style.display    = 'none';
@@ -108,6 +109,7 @@ const UI = {
     this.el('boardContainer').style.display = 'none';
     this.el('headerTabs').style.display      = '';
     this.el('syncStatus').style.display      = 'none';
+    this.el('shareBoardFromBoardBtn') && (this.el('shareBoardFromBoardBtn').style.display = 'none');
   },
 
   showBoard() {
@@ -116,6 +118,7 @@ const UI = {
     this.el('boardBreadcrumb').style.display = '';
     this.el('addListBtn').style.display      = '';
     this.el('boardSettingsBtn').style.display = '';
+    this.el('shareBoardFromBoardBtn') && (this.el('shareBoardFromBoardBtn').style.display = '');
     this.el('syncStatus').style.display      = '';
     this.el('messagesView').style.display    = 'none';
     this.el('headerTabs').style.display      = 'none';
@@ -138,6 +141,13 @@ const UI = {
     if (n) n.textContent = name || '(no name set)';
     if (e) e.textContent = email;
     if (i) i.value       = name;
+
+    // User ID display
+    const uid = profile?.id || '';
+    const uidEl = this.el('profileUserId');
+    if (uidEl) uidEl.textContent = uid ? uid.slice(0, 8) + '…' : '';
+    const uidFull = this.el('profileUserIdFull');
+    if (uidFull) uidFull.value = uid;
 
     // Phone + SMS toggle
     const pi = this.el('profilePhoneInput');
@@ -163,26 +173,38 @@ const Auth = (() => {
   function getUserId() { return currentUser?.id ?? null; }
 
   async function init(onSignedIn, onSignedOut) {
-    // onAuthStateChange fires INITIAL_SESSION on every page load (including
-    // after a Google OAuth redirect-back). SIGNED_IN fires for form logins.
-    // We use a flag so the boot sequence only runs once per session.
-    let booted = false;
+    // Use getSession() first to handle the initial state synchronously,
+    // then onAuthStateChange handles subsequent events (OAuth redirects, sign-out).
+    // This prevents the white-screen / infinite-loading race condition where
+    // INITIAL_SESSION fires before the UI is ready.
+    let handledUserId = null;
 
+    async function handleSignIn(user) {
+      if (handledUserId === user.id) return; // idempotent
+      handledUserId = user.id;
+      currentUser = user;
+      await onSignedIn(currentUser);
+    }
+
+    // First, check if there's already a session (covers page reloads + OAuth redirect-back)
+    const { data: { session: initialSession } } = await sb.auth.getSession();
+    if (initialSession?.user) {
+      await handleSignIn(initialSession.user);
+    } else {
+      onSignedOut();
+    }
+
+    // Listen for subsequent changes (new sign-in, sign-out, token refresh)
     sb.auth.onAuthStateChange(async (event, session) => {
-      if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && session?.user) {
-        if (booted && currentUser?.id === session.user.id) return; // already handled
-        booted = true;
-        currentUser = session.user;
-        await onSignedIn(currentUser);
-      } else if (event === 'INITIAL_SESSION' && !session) {
-        // No existing session — show the auth screen.
-        onSignedOut();
+      if (event === 'SIGNED_IN' && session?.user) {
+        await handleSignIn(session.user);
       } else if (event === 'SIGNED_OUT') {
-        booted = false;
+        handledUserId = null;
         currentUser = null;
         onSignedOut();
       }
-      // TOKEN_REFRESHED: session is silently renewed, no UI action needed.
+      // INITIAL_SESSION is now handled above via getSession(); ignore it here.
+      // TOKEN_REFRESHED: silent renewal, no action needed.
     });
   }
 
@@ -426,6 +448,21 @@ const Storage = {
     return data;
   },
 
+  async getGroupMembers(groupId) {
+    // Join group_members with profiles to get display names
+    const { data, error } = await sb
+      .from('group_members')
+      .select('role, user_id, profiles!user_id(display_name, email)')
+      .eq('group_id', groupId);
+    if (error) throw error;
+    return (data || []).map(m => ({
+      role: m.role,
+      user_id: m.user_id,
+      display_name: m.profiles?.display_name || '',
+      email: m.profiles?.email || '',
+    }));
+  },
+
   /* ── Messages ── */
 
   async getGroupMessages(groupId, limit = 50) {
@@ -554,7 +591,7 @@ const Render = {
     el.dataset.boardId = board.id;
     const color = board.color || '#C97D4E';
     const isShared = !!board.permission_level;
-    el.title = `Open ${board.title}`; // Simple native hover preview
+    el.title = `Open ${board.title}`;
     el.innerHTML = `
       <div class="board-card-color" style="background:${color};"></div>
       <div class="board-card-body">
@@ -566,9 +603,13 @@ const Render = {
         <button class="board-card-pin ${board.is_pinned ? 'active' : ''}" data-board-pin="${board.id}" aria-label="${board.is_pinned ? 'Unpin' : 'Pin'} board" title="${board.is_pinned ? 'Unpin' : 'Pin'} board">
           <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M12.5 5.5l-3-3M6.5 12.5l-3-3M4 12l2-2M10 4l2-2M5 5l6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
-        ${!isShared ? `<button class="board-card-delete" data-board-delete="${board.id}" aria-label="Delete board" title="Delete board">
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M2 4h12l-1.5 9H3.5L2 4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M5.5 2h5M1 4h14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-        </button>` : `<button class="board-card-pin" id="shareBoardBtnSmall" data-board-share="${board.id}" title="Share settings">🌐</button>`}
+        ${!isShared ? `
+          <button class="board-card-share" data-board-share="${board.id}" aria-label="Share board" title="Share board">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><circle cx="13" cy="3" r="1.8" stroke="currentColor" stroke-width="1.4"/><circle cx="3" cy="8" r="1.8" stroke="currentColor" stroke-width="1.4"/><circle cx="13" cy="13" r="1.8" stroke="currentColor" stroke-width="1.4"/><path d="M4.7 7.1l6.6-3M4.7 9l6.6 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          </button>
+          <button class="board-card-delete" data-board-delete="${board.id}" aria-label="Delete board" title="Delete board">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M2 4h12l-1.5 9H3.5L2 4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M5.5 2h5M1 4h14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          </button>` : ''}
       </div>`;
     return el;
   },
@@ -877,10 +918,10 @@ const Dashboard = (() => {
       UI.showDashboard();
     }
 
-    const source = tab === 'shared' ? sharedBoards : boards;
+    const source = tab === 'shared' ? (sharedBoards || []) : (boards || []);
 
     // Filter and Sort logic
-    let filtered = source.filter(b => b.title.toLowerCase().includes(searchQuery.toLowerCase()));
+    let filtered = source.filter(b => b.title.toLowerCase().includes((searchQuery || '').toLowerCase()));
     
     filtered.sort((a, b) => {
       const pA = !!a.is_pinned;
@@ -898,21 +939,21 @@ const Dashboard = (() => {
     // Build the grid content
     const fragment = document.createDocumentFragment();
     
-    filtered.forEach(board => {
-      const card = Render.boardCard(board);
-      card.addEventListener('click', e => {
-        if (e.target.closest('[data-board-delete]') || e.target.closest('[data-board-pin]')) return;
-        openBoard(board.id);
-      });
-      fragment.appendChild(card);
-    });
-    
     if (filtered.length === 0 && searchQuery) {
       const empty = document.createElement('div');
       empty.className = 'empty-state';
       empty.style.gridColumn = '1 / -1';
       empty.innerHTML = `<div class="empty-state-text">No boards found matching "${searchQuery}"</div>`;
       fragment.appendChild(empty);
+    } else {
+      filtered.forEach(board => {
+        const card = Render.boardCard(board);
+        card.addEventListener('click', e => {
+          if (e.target.closest('[data-board-delete]') || e.target.closest('[data-board-pin]') || e.target.closest('[data-board-share]')) return;
+          openBoard(board.id);
+        });
+        fragment.appendChild(card);
+      });
     }
 
     // "New board" placeholder card
@@ -1079,7 +1120,10 @@ const Dashboard = (() => {
     if (delBtn) { deleteBoard(delBtn.dataset.boardDelete); return; }
     
     const pinBtn = e.target.closest('[data-board-pin]');
-    if (pinBtn) togglePin(pinBtn.dataset.boardPin);
+    if (pinBtn) { togglePin(pinBtn.dataset.boardPin); return; }
+
+    const shareBtn = e.target.closest('[data-board-share]');
+    if (shareBtn) { BoardSharing.open(shareBtn.dataset.boardShare); return; }
   });
 
   searchInput?.addEventListener('input', e => AppState.setState(s => { s.searchQuery = e.target.value; return s; }));
@@ -1115,6 +1159,10 @@ const Dashboard = (() => {
 
   newBoardBtn?.addEventListener('click', showNewBoardModal);
   document.getElementById('boardSettingsBtn')?.addEventListener('click', showEditBoardModal);
+  document.getElementById('shareBoardFromBoardBtn')?.addEventListener('click', () => {
+    const { boardId } = AppState.getState();
+    if (boardId) BoardSharing.open(boardId);
+  });
   
   newBoardClose?.addEventListener('click', hideNewBoardModal);
   newBoardCancel?.addEventListener('click', hideNewBoardModal);
@@ -1150,9 +1198,12 @@ const MessagesView = (() => {
       };
     }
 
-    // Allow Ctrl/Cmd+Enter to send
+    // Allow Enter to send, Shift+Enter for newline
     input?.addEventListener('keydown', e => {
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendBtn?.click();
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendBtn?.click();
+      }
     });
 
     const createBtn = UI.el('createGroupFromMessagesBtn');
@@ -1183,15 +1234,23 @@ const MessagesView = (() => {
 
   function renderMessages(msgs) {
     const feed = UI.el('messagesFeed');
-    feed.innerHTML = msgs.map(m => `
-      <div class="message">
-        <div class="message-avatar">${(m.sender_name || '?').charAt(0)}</div>
-        <div class="message-content">
-          <div class="message-meta">${m.sender_name} • ${new Date(m.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
-          <div class="message-text">${Render.esc(m.content)}</div>
+    const { profile } = AppState.getState();
+    const myId = profile?.id || Auth.getUserId();
+    feed.innerHTML = msgs.map(m => {
+      const isMe = m.sender_id === myId;
+      const initial = (m.sender_name || '?').charAt(0).toUpperCase();
+      return `
+        <div class="message ${isMe ? 'message-mine' : ''}">
+          ${!isMe ? `<div class="message-avatar" title="${Render.esc(m.sender_name || '')}">${Render.esc(initial)}</div>` : ''}
+          <div class="message-bubble-wrap">
+            ${!isMe ? `<div class="message-meta">${Render.esc(m.sender_name || 'Unknown')}</div>` : ''}
+            <div class="message-bubble">${Render.esc(m.content)}</div>
+            <div class="message-time">${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
+          </div>
+          ${isMe ? `<div class="message-avatar message-avatar-mine" title="You">${Render.esc(initial)}</div>` : ''}
         </div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
     feed.scrollTop = feed.scrollHeight;
   }
 
@@ -1272,21 +1331,79 @@ const GroupsView = (() => {
     }
 
     list.innerHTML = groups.map(g => `
-      <div class="share-item">
-        <div>
-          <div class="share-item-email" style="font-weight:500;">${Render.esc(g.name)}</div>
-          <div class="share-item-perm">${g.description || ''} &nbsp;·&nbsp; ${g.role}</div>
+      <div class="group-item" data-group-id="${g.id}">
+        <div class="group-item-header">
+          <div>
+            <div class="share-item-email" style="font-weight:600;">${Render.esc(g.name)}</div>
+            <div class="share-item-perm">${g.description ? Render.esc(g.description) + ' · ' : ''}${g.role}</div>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn-ghost" style="font-size:12px;" data-group-add-member="${g.id}" data-group-name="${Render.esc(g.name)}">+ Member</button>
+            <button class="btn-ghost" style="font-size:12px;" data-group-show-members="${g.id}">Members ▾</button>
+          </div>
         </div>
-        <button class="btn-ghost" style="font-size:12px;" onclick="GroupsView.openAddMember('${g.id}','${Render.esc(g.name)}')">+ Member</button>
+        <div class="group-members-list" id="members-${g.id}" style="display:none;margin-top:8px;padding:8px;background:var(--canvas);border-radius:var(--radius-sm);">
+          <div class="members-loading" style="font-size:0.8rem;color:var(--ink-soft);">Loading…</div>
+        </div>
       </div>
     `).join('');
+
+    // Wire member buttons
+    list.querySelectorAll('[data-group-add-member]').forEach(btn => {
+      btn.onclick = () => openAddMember(btn.dataset.groupAddMember, btn.dataset.groupName);
+    });
+    list.querySelectorAll('[data-group-show-members]').forEach(btn => {
+      btn.onclick = () => toggleMembers(btn.dataset.groupShowMembers, btn);
+    });
+  }
+
+  async function toggleMembers(groupId, btn) {
+    const panel = UI.el(`members-${groupId}`);
+    if (!panel) return;
+    const isOpen = panel.style.display !== 'none';
+    if (isOpen) {
+      panel.style.display = 'none';
+      btn.textContent = 'Members ▾';
+      return;
+    }
+    panel.style.display = 'block';
+    btn.textContent = 'Members ▴';
+    panel.innerHTML = '<div style="font-size:0.8rem;color:var(--ink-soft);">Loading…</div>';
+    try {
+      const members = await Storage.getGroupMembers(groupId);
+      if (!members || members.length === 0) {
+        panel.innerHTML = '<div style="font-size:0.8rem;color:var(--ink-soft);">No members yet.</div>';
+        return;
+      }
+      panel.innerHTML = members.map(m => `
+        <div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--ink-faint);">
+          <div style="width:26px;height:26px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:0.75rem;color:#fff;font-weight:600;">
+            ${(m.display_name || m.email || '?').charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <div style="font-size:0.83rem;font-weight:500;">${Render.esc(m.display_name || m.email || 'Unknown')}</div>
+            <div style="font-size:0.73rem;color:var(--ink-soft);">${Render.esc(m.email || '')} · ${m.role}</div>
+          </div>
+        </div>
+      `).join('');
+    } catch (err) {
+      panel.innerHTML = `<div style="font-size:0.8rem;color:var(--red);">Error: ${err.message}</div>`;
+    }
   }
 
   function openAddMember(groupId, groupName) {
     const email = prompt(`Add a member to "${groupName}" by email:`);
     if (!email?.trim()) return;
     Storage.addGroupMember(groupId, email.trim())
-      .then(() => alert('Member added!'))
+      .then(() => {
+        alert('Member added!');
+        // Refresh the members panel if open
+        const panel = UI.el(`members-${groupId}`);
+        if (panel && panel.style.display !== 'none') {
+          const btn = document.querySelector(`[data-group-show-members="${groupId}"]`);
+          if (btn) toggleMembers(groupId, btn);
+        }
+      })
       .catch(err => alert('Error: ' + (err.message || err)));
   }
 
@@ -1308,6 +1425,7 @@ const GroupsView = (() => {
       const groups = await Storage.getUserGroups();
       AppState.setState(s => ({ ...s, groups }));
       UI.el('createGroupOverlay')?.classList.remove('open');
+      UI.el('groupsOverlay')?.classList.add('open');
       UI.el('groupName').value = '';
       UI.el('groupDescription').value = '';
       btn.textContent = 'Create';
@@ -1814,6 +1932,26 @@ const ProfileMenu = (() => {
 
   phoneInput?.addEventListener('keydown', e => { if (e.key === 'Enter') savePhone?.click(); });
 
+  // Copy user ID to clipboard
+  document.getElementById('copyUserIdBtn')?.addEventListener('click', async () => {
+    const uid = document.getElementById('profileUserIdFull')?.value;
+    if (!uid) return;
+    const btn = document.getElementById('copyUserIdBtn');
+    try {
+      await navigator.clipboard.writeText(uid);
+      btn.textContent = 'Copied!';
+    } catch {
+      // Fallback for non-HTTPS
+      const ta = document.createElement('textarea');
+      ta.value = uid; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      btn.textContent = 'Copied!';
+    }
+    setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+  });
+
   // Sign out
   document.getElementById('signOutBtn')?.addEventListener('click', async () => {
     hide();
@@ -1999,119 +2137,6 @@ const SMS = (() => {
   return { send, normalizeUS, dispatchCardReminders, formatTime12 };
 })();
 
-  /**
-   * Normalize a US phone number to E.164 (+1XXXXXXXXXX).
-   * Accepts: 2125551234, 212-555-1234, (212) 555-1234, +12125551234, etc.
-   */
-  function normalizeUS(raw) {
-    if (!raw) return null;
-    const digits = raw.replace(/\D/g, '');
-    if (digits.length === 10) return `+1${digits}`;
-    if (digits.length === 11 && digits[0] === '1') return `+${digits}`;
-    if (raw.startsWith('+') && digits.length === 11) return `+${digits}`;
-    return null;
-  }
-
-  /**
-   * Send a single SMS via Seven (sms77io) on RapidAPI.
-   */
-  async function send(to, text) {
-    if (!to || !text) throw new Error('SMS: missing "to" or "text"');
-
-    if (RAPIDAPI_KEY === 'YOUR_RAPIDAPI_KEY_HERE') {
-      console.warn('SMS: paste your RapidAPI key into RAPIDAPI_KEY in app.js');
-      return { ok: false, reason: 'no_key' };
-    }
-
-    const normalized = normalizeUS(to);
-    if (!normalized) {
-      console.warn(`SMS: could not normalize "${to}" — skipping`);
-      return { ok: false, reason: 'bad_number' };
-    }
-
-    let resp;
-    try {
-      resp = await fetch('https://sms77io.p.rapidapi.com/sms', {
-        method: 'POST',
-        headers: {
-          'Content-Type':    'application/json',
-          'X-RapidAPI-Key':  RAPIDAPI_KEY,
-          'X-RapidAPI-Host': RAPIDAPI_HOST,
-        },
-        body: JSON.stringify({
-          to:   normalized,
-          text: text,
-          from: 'TaskDeck',  // max 11 chars for alphanumeric sender ID
-          json: 1,           // get structured JSON response back
-        }),
-      });
-    } catch (networkErr) {
-      console.error('SMS network error:', networkErr);
-      throw networkErr;
-    }
-
-    const payload = await resp.json().catch(() => ({}));
-
-    if (!resp.ok) {
-      console.error('SMS send failed:', resp.status, payload);
-      throw new Error(`SMS failed (${resp.status}): ${JSON.stringify(payload)}`);
-    }
-
-    // Seven returns { success: "100", total_price: ..., messages: [...] }
-    // success "100" = sent, anything else = error
-    if (payload.success && payload.success !== '100') {
-      console.error('SMS rejected by Seven:', payload);
-      throw new Error(`SMS rejected: code ${payload.success}`);
-    }
-
-    console.log('SMS sent OK →', normalized);
-    return payload;
-  }
-
-  /**
-   * Schedule reminders for a card. Called when a card is saved.
-   */
-  async function dispatchCardReminders(card) {
-    const phone = card.phone?.trim();
-    if (!phone) return;
-    const now = Date.now();
-
-    // Main due-date reminder — 1 hour before deadline
-    if (card.dueDate) {
-      const timeStr   = card.dueTime || '09:00';
-      const deadline  = new Date(`${card.dueDate}T${timeStr}`).getTime();
-      const triggerAt = deadline - 60 * 60 * 1000;
-      if (triggerAt > now) {
-        const delay = triggerAt - now;
-        const msg = `TaskDeck: "${card.title}" is due at ${formatTime12(timeStr)} on ${card.dueDate}.`;
-        console.log(`SMS scheduled in ${Math.round(delay / 60000)} min → "${card.title}"`);
-        setTimeout(() => send(phone, msg).catch(console.error), delay);
-      }
-    }
-
-    // Custom per-card reminders
-    (card.reminders || []).forEach((r, i) => {
-      if (!r.date) return;
-      const t = new Date(`${r.date}T${r.time || '09:00'}`).getTime();
-      if (t > now) {
-        const delay = t - now;
-        const msg = `TaskDeck reminder: "${card.title}"${card.dueDate ? ` (due ${card.dueDate})` : ''}.`;
-        setTimeout(() => send(phone, msg).catch(console.error), delay);
-      }
-    });
-  }
-
-  function formatTime12(val) {
-    if (!val) return '';
-    const [h, m] = val.split(':').map(Number);
-    const ampm = h < 12 ? 'AM' : 'PM';
-    const hh   = h % 12 === 0 ? 12 : h % 12;
-    return `${hh}:${String(m).padStart(2,'0')} ${ampm}`;
-  }
-
-  return { send, normalizeUS, dispatchCardReminders, formatTime12 };
-})();
-
 let isAppInitialized = false;
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -2177,14 +2202,29 @@ document.addEventListener('DOMContentLoaded', async () => {
           Storage.getBoards(user.id)
         );
 
+        // Auto-create a default "My First Board" for brand-new users
+        if (boards.length === 0) {
+          try {
+            UI.setLoading('Creating your first board…', 82);
+            const defaultBoard = await Storage.createBoard(user.id, 'My First Board', '#C97D4E');
+            await Storage.seedBoard(defaultBoard.id);
+            boards.push({ ...defaultBoard, is_pinned: false });
+          } catch (e) { console.warn('Could not create default board:', e); }
+        }
+
+        // Also fetch shared boards so the dashboard has them ready
+        let sharedBoards = [];
+        try { sharedBoards = await Storage.getSharedBoards(); } catch (_) {}
+
         AppState.setState(() => ({
-          view:       'dashboard',
+          view:         'dashboard',
           profile,
           boards,
-          boardId:    null,
-          boardTitle: '',
-          boardColor: '#C97D4E',
-          lists:      [],
+          sharedBoards,
+          boardId:      null,
+          boardTitle:   '',
+          boardColor:   '#C97D4E',
+          lists:        [],
         }), true);
 
         UI.setProfile(profile);

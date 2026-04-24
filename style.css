@@ -469,6 +469,7 @@ button { font-family: var(--font-sans); }
 /* Persistence: Keep actions visible if board is pinned, but hide non-relevant buttons when not hovering */
 .board-card:has(.board-card-pin.active) .board-card-actions { opacity: 1; }
 .board-card:not(:hover) .board-card-delete { display: none; }
+.board-card:not(:hover) .board-card-share { display: none; }
 .board-card:not(:hover) .board-card-pin:not(.active) { display: none; }
 
 /* "New board" placeholder card */
@@ -1013,6 +1014,64 @@ button { font-family: var(--font-sans); }
 
 .modal-divider {
   height: 1px; background: var(--list-border); margin: 12px 0;
+}
+
+/* ── Profile User ID ── */
+.profile-id-row {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 2px;
+}
+.profile-user-id {
+  flex: 1; font-size: 0.78rem; color: var(--ink-soft);
+  font-family: monospace; letter-spacing: 0.03em;
+  background: var(--canvas); padding: 5px 8px; border-radius: 6px;
+  border: 1px solid var(--ink-faint); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Board card share button ── */
+.board-card-share {
+  width: 24px; height: 24px; border-radius: 6px;
+  background: none; border: none; cursor: pointer;
+  color: var(--ink-soft); display: flex; align-items: center; justify-content: center;
+  transition: var(--transition);
+}
+.board-card-share:hover { background: var(--accent-light); color: var(--accent); }
+
+/* ── Group item header ── */
+.group-item-header {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;
+}
+.group-item { cursor: default; }
+.group-members-list { border-top: 1px solid var(--ink-faint); margin-top: 8px; }
+
+/* ── Messages — chat bubble style ── */
+.message {
+  display: flex; gap: 8px; align-items: flex-end;
+  animation: fadeInUp 0.2s ease-out;
+}
+.message-mine {
+  flex-direction: row-reverse;
+}
+.message-bubble-wrap {
+  display: flex; flex-direction: column; gap: 2px; max-width: 70%;
+}
+.message-mine .message-bubble-wrap { align-items: flex-end; }
+.message-bubble {
+  padding: 8px 12px; border-radius: 16px;
+  background: var(--canvas-card); border: 1px solid var(--list-border);
+  font-size: 0.875rem; line-height: 1.45; color: var(--ink); word-break: break-word;
+  border-bottom-left-radius: 4px;
+}
+.message-mine .message-bubble {
+  background: var(--accent); color: #fff; border-color: transparent;
+  border-bottom-left-radius: 16px; border-bottom-right-radius: 4px;
+}
+.message-time {
+  font-size: 0.68rem; color: var(--ink-soft); padding: 0 4px;
+}
+.message-mine .message-time { text-align: right; }
+.message-avatar-mine {
+  background: var(--ink-soft);
 }
 
 /* ═══════════════════════════════════════════════════════════
