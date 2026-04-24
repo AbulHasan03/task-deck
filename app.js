@@ -1850,13 +1850,21 @@ function initAuthUI() {
   document.getElementById('signInGoogleBtn')?.addEventListener('click', async () => {
     UI.authError('');
     try {
-      const { data, error } = await sb.auth.signInWithOAuth({
+      // redirectTo must exactly match what's in:
+      //   1. Supabase → Authentication → URL Configuration → Redirect URLs
+      //   2. Google Cloud Console → Authorized redirect URIs (the Supabase callback)
+      // For GitHub Pages this is typically https://username.github.io/repo-name/
+      const redirectTo = window.location.href.split('?')[0].split('#')[0];
+      const { error } = await sb.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: window.location.origin }
+        options: {
+          redirectTo,
+          queryParams: { access_type: 'offline', prompt: 'consent' },
+        }
       });
       if (error) throw error;
-    } catch (err) { 
-      UI.authError(err.message || 'Google sign in failed. Make sure Google OAuth is configured in Supabase.'); 
+    } catch (err) {
+      UI.authError(err.message || 'Google sign in failed. Make sure Google OAuth is configured in Supabase.');
     }
   });
 
