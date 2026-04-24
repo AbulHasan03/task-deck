@@ -409,10 +409,7 @@ const Storage = {
   },
 
   async getBoardShares(boardId) {
-    const { data, error } = await sb
-      .from('board_shares')
-      .select('id, shared_with, permission_level, profiles!shared_with(display_name, email)')
-      .eq('board_id', boardId);
+    const { data, error } = await sb.rpc('get_board_shares', { p_board_id: boardId });
     if (error) throw error;
     return data ?? [];
   },
@@ -449,18 +446,9 @@ const Storage = {
   },
 
   async getGroupMembers(groupId) {
-    // Join group_members with profiles to get display names
-    const { data, error } = await sb
-      .from('group_members')
-      .select('role, user_id, profiles!user_id(display_name, email)')
-      .eq('group_id', groupId);
+    const { data, error } = await sb.rpc('get_group_members', { p_group_id: groupId });
     if (error) throw error;
-    return (data || []).map(m => ({
-      role: m.role,
-      user_id: m.user_id,
-      display_name: m.profiles?.display_name || '',
-      email: m.profiles?.email || '',
-    }));
+    return data ?? [];
   },
 
   /* ── Messages ── */
@@ -1290,23 +1278,42 @@ const BoardSharing = (() => {
 
   async function loadShares() {
     const shares = await Storage.getBoardShares(activeBoardId);
+    if (!shares || shares.length === 0) {
+      list.innerHTML = `<div style="font-size:0.82rem;color:var(--ink-soft);padding:8px 0;">Not shared with anyone yet.</div>`;
+      return;
+    }
     list.innerHTML = shares.map(s => `
       <div class="share-item">
         <div>
-          <div class="share-item-email">${s.profiles.email}</div>
-          <div class="share-item-perm">${s.permission_level}</div>
+          <div class="share-item-email">${Render.esc(s.display_name || s.email || 'Unknown')}</div>
+          <div class="share-item-perm">${Render.esc(s.email || '')} · ${s.permission_level}</div>
         </div>
-        <button class="share-item-remove" onclick="BoardSharing.remove('${s.id}')">✕</button>
+        <button class="share-item-remove" data-share-id="${s.id}">✕</button>
       </div>
     `).join('');
+    list.querySelectorAll('[data-share-id]').forEach(btn => {
+      btn.onclick = () => BoardSharing.remove(btn.dataset.shareId);
+    });
   }
 
   UI.el('shareBoardBtn').onclick = async () => {
     const email = emailIn.value.trim();
     if (!email) return;
-    await Storage.shareBoard(activeBoardId, email, permIn.value);
-    emailIn.value = '';
-    loadShares();
+    const btn = UI.el('shareBoardBtn');
+    btn.textContent = '…';
+    btn.disabled = true;
+    try {
+      await Storage.shareBoard(activeBoardId, email, permIn.value);
+      emailIn.value = '';
+      await loadShares();
+      btn.textContent = 'Share';
+    } catch (err) {
+      btn.textContent = 'Error';
+      // Show error inline instead of silently failing
+      list.innerHTML = `<div style="font-size:0.82rem;color:var(--red);padding:8px 0;">${err.message || 'Could not share board. Make sure the email has a TaskDeck account.'}</div>`;
+      setTimeout(() => { btn.textContent = 'Share'; }, 2000);
+    }
+    btn.disabled = false;
   };
 
   UI.el('shareBoardClose').onclick = () => overlay.classList.remove('open');
@@ -2058,9 +2065,10 @@ const SMS = (() => {
 
   /**
    * Send SMS via the Supabase Edge Function (keeps API key off the client).
+   * Fails silently on CORS/network errors so they don't surface to users.
    */
   async function send(to, text) {
-    if (!to || !text) throw new Error('SMS: missing "to" or "text"');
+    if (!to || !text) return { ok: false, reason: 'missing_args' };
 
     const normalized = normalizeUS(to);
     if (!normalized) {
@@ -2069,30 +2077,40 @@ const SMS = (() => {
     }
 
     // Get the current session token to authenticate the Edge Function call
-    const { data: { session } } = await sb.auth.getSession();
+    let session;
+    try {
+      const { data } = await sb.auth.getSession();
+      session = data?.session;
+    } catch (_) {}
     if (!session) {
       console.warn('SMS: no active session — skipping');
       return { ok: false, reason: 'no_session' };
     }
 
-    const resp = await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
-      method: 'POST',
-      headers: {
-        'Content-Type':  'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-        'apikey':        SUPABASE_ANON_KEY,
-      },
-      body: JSON.stringify({ to: normalized, text }),
-    });
+    try {
+      const resp = await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
+        method: 'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+          'apikey':        SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ to: normalized, text }),
+      });
 
-    const payload = await resp.json().catch(() => ({}));
-    if (!resp.ok) {
-      console.error('SMS Edge Function error:', resp.status, payload);
-      throw new Error(`SMS failed (${resp.status}): ${payload?.error || JSON.stringify(payload)}`);
+      const payload = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        console.warn('SMS Edge Function error:', resp.status, payload);
+        return { ok: false, reason: 'edge_error', status: resp.status };
+      }
+
+      console.log('SMS sent OK →', normalized);
+      return payload;
+    } catch (err) {
+      // CORS, network offline, Edge Function not deployed — log and move on
+      console.warn('SMS send skipped (network/CORS):', err.message);
+      return { ok: false, reason: 'network_error' };
     }
-
-    console.log('SMS sent OK →', normalized);
-    return payload;
   }
 
   /**
