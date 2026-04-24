@@ -163,32 +163,27 @@ const Auth = (() => {
   function getUserId() { return currentUser?.id ?? null; }
 
   async function init(onSignedIn, onSignedOut) {
-    // Check existing session first — this is the authoritative boot path.
-    // We intentionally call onSignedIn / onSignedOut from here and let
-    // onAuthStateChange only handle *subsequent* events (SIGNED_IN after
-    // a login form submit, SIGNED_OUT after sign-out). This prevents the
-    // double-invocation that caused the infinite loading screen.
-    const { data: { session } } = await sb.auth.getSession();
+    // onAuthStateChange fires INITIAL_SESSION on every page load (including
+    // after a Google OAuth redirect-back). SIGNED_IN fires for form logins.
+    // We use a flag so the boot sequence only runs once per session.
+    let booted = false;
 
     sb.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        if (currentUser?.id === session.user.id) return;
+      if ((event === 'INITIAL_SESSION' || event === 'SIGNED_IN') && session?.user) {
+        if (booted && currentUser?.id === session.user.id) return; // already handled
+        booted = true;
         currentUser = session.user;
         await onSignedIn(currentUser);
+      } else if (event === 'INITIAL_SESSION' && !session) {
+        // No existing session — show the auth screen.
+        onSignedOut();
       } else if (event === 'SIGNED_OUT') {
+        booted = false;
         currentUser = null;
         onSignedOut();
       }
-      // TOKEN_REFRESHED and INITIAL_SESSION are intentionally ignored here;
-      // the initial boot is handled by the getSession() block below.
+      // TOKEN_REFRESHED: session is silently renewed, no UI action needed.
     });
-
-    if (session?.user) {
-      currentUser = session.user;
-      await onSignedIn(currentUser);
-    } else {
-      onSignedOut();
-    }
   }
 
   async function signIn(email, password) {
@@ -794,20 +789,6 @@ const CardModal = (() => {
     catch (e) { console.error(e); UI.setSyncStatus('error'); }
   }
 
-  async function deleteCard() {
-    if (!currentCardId) return;
-    const cardId = currentCardId, listId = currentListId;
-    AppState.setState(s => {
-      const l = s.lists.find(x => x.id === listId);
-      if (l) l.cards = l.cards.filter(c => c.id !== cardId);
-      return s;
-    });
-    close();
-    UI.setSyncStatus('saving');
-    try { await Storage.deleteCard(cardId); UI.setSyncStatus('saved'); }
-    catch (e) { console.error(e); UI.setSyncStatus('error'); }
-  }
-
   document.getElementById('modalClose')?.addEventListener('click', close);
   document.getElementById('saveCardBtn')?.addEventListener('click', save);
   document.getElementById('deleteCardBtn')?.addEventListener('click', deleteCard);
@@ -1115,7 +1096,9 @@ const Dashboard = (() => {
       AppState.setState(s => ({ ...s, tab: tabKey, sharedBoards: shared }));
     } else if (tabKey === 'groups') {
       const groups = await Storage.getUserGroups();
-      AppState.setState(s => ({ ...s, tab: tabKey, groups: groups }));
+      AppState.setState(s => ({ ...s, tab: tabKey, groups }));
+      GroupsView.render();
+      UI.el('groupsOverlay')?.classList.add('open');
     } else if (tabKey === 'messages') {
       const groups = await Storage.getUserGroups();
       AppState.setState(s => ({ ...s, tab: tabKey, groups: groups }));
@@ -1152,14 +1135,27 @@ const MessagesView = (() => {
     const sendBtn = UI.el('sendMessageBtn');
     const input   = UI.el('messageInput');
 
-    sendBtn?.onclick = async () => {
-      const content = input.value.trim();
-      if (!content || !activeGroupId) return;
-      input.value = '';
-      await Storage.sendMessage(activeGroupId, content);
-    };
+    if (sendBtn) {
+      sendBtn.onclick = async () => {
+        const content = input?.value.trim();
+        if (!content || !activeGroupId) return;
+        input.value = '';
+        try { await Storage.sendMessage(activeGroupId, content); }
+        catch (err) { console.error('Send message error:', err); }
+      };
+    }
 
-    UI.el('createGroupFromMessagesBtn').onclick = () => UI.el('createGroupOverlay').classList.add('open');
+    // Allow Ctrl/Cmd+Enter to send
+    input?.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendBtn?.click();
+    });
+
+    const createBtn = UI.el('createGroupFromMessagesBtn');
+    if (createBtn) createBtn.onclick = () => openCreateGroupOverlay();
+  }
+
+  function openCreateGroupOverlay() {
+    UI.el('createGroupOverlay')?.classList.add('open');
   }
 
   async function selectGroup(groupId, groupName) {
@@ -1254,6 +1250,86 @@ const BoardSharing = (() => {
   return { open, remove: async (id) => { await Storage.removeShare(id); loadShares(); } };
 })();
 window.BoardSharing = BoardSharing; // Expose for inline onclick
+
+/* ═══════════════════════════════════════════════════════════
+   GROUPS VIEW
+   ═══════════════════════════════════════════════════════════ */
+
+const GroupsView = (() => {
+  function render() {
+    const { groups } = AppState.getState();
+    const list = UI.el('groupsList');
+    if (!list) return;
+
+    if (!groups || groups.length === 0) {
+      list.innerHTML = `<div class="empty-state"><div class="empty-state-text">No groups yet.<br>Create one to collaborate with others.</div></div>`;
+      return;
+    }
+
+    list.innerHTML = groups.map(g => `
+      <div class="share-item">
+        <div>
+          <div class="share-item-email" style="font-weight:500;">${Render.esc(g.name)}</div>
+          <div class="share-item-perm">${g.description || ''} &nbsp;·&nbsp; ${g.role}</div>
+        </div>
+        <button class="btn-ghost" style="font-size:12px;" onclick="GroupsView.openAddMember('${g.id}','${Render.esc(g.name)}')">+ Member</button>
+      </div>
+    `).join('');
+  }
+
+  function openAddMember(groupId, groupName) {
+    const email = prompt(`Add a member to "${groupName}" by email:`);
+    if (!email?.trim()) return;
+    Storage.addGroupMember(groupId, email.trim())
+      .then(() => alert('Member added!'))
+      .catch(err => alert('Error: ' + (err.message || err)));
+  }
+
+  // Wire Create Group button on groups overlay
+  document.getElementById('createGroupBtn')?.addEventListener('click', () => {
+    UI.el('groupsOverlay')?.classList.remove('open');
+    UI.el('createGroupOverlay')?.classList.add('open');
+  });
+
+  // Wire Create Group confirm button
+  document.getElementById('confirmCreateGroupBtn')?.addEventListener('click', async () => {
+    const name = UI.el('groupName')?.value.trim();
+    const desc = UI.el('groupDescription')?.value.trim() || null;
+    if (!name) { UI.el('groupName')?.focus(); return; }
+    const btn = UI.el('confirmCreateGroupBtn');
+    btn.textContent = '…';
+    try {
+      await Storage.createGroup(name, desc);
+      const groups = await Storage.getUserGroups();
+      AppState.setState(s => ({ ...s, groups }));
+      UI.el('createGroupOverlay')?.classList.remove('open');
+      UI.el('groupName').value = '';
+      UI.el('groupDescription').value = '';
+      btn.textContent = 'Create';
+      render();
+    } catch (err) {
+      console.error(err);
+      btn.textContent = 'Error';
+      setTimeout(() => { btn.textContent = 'Create'; }, 1800);
+    }
+  });
+
+  // Close buttons
+  document.getElementById('groupsClose')?.addEventListener('click', () => UI.el('groupsOverlay')?.classList.remove('open'));
+  document.getElementById('createGroupClose')?.addEventListener('click', () => UI.el('createGroupOverlay')?.classList.remove('open'));
+  document.getElementById('createGroupCancelBtn')?.addEventListener('click', () => UI.el('createGroupOverlay')?.classList.remove('open'));
+
+  // Close on overlay-backdrop click
+  document.getElementById('groupsOverlay')?.addEventListener('click', e => {
+    if (e.target === UI.el('groupsOverlay')) UI.el('groupsOverlay').classList.remove('open');
+  });
+  document.getElementById('createGroupOverlay')?.addEventListener('click', e => {
+    if (e.target === UI.el('createGroupOverlay')) UI.el('createGroupOverlay').classList.remove('open');
+  });
+
+  return { render, openAddMember };
+})();
+window.GroupsView = GroupsView; // Expose for inline onclick
 
 /* ═══════════════════════════════════════════════════════════
    BOARD
@@ -1908,7 +1984,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         let profile = await Storage.getProfile(user.id);
         if (!profile) {
           UI.setLoading('Creating profile…', 50);
-          const displayName = user.user_metadata?.display_name || '';
+          const displayName = user.user_metadata?.display_name || user.user_metadata?.full_name || user.user_metadata?.name || '';
           await Storage.upsertProfile(user.id, { display_name: displayName, email: user.email });
           profile = { id: user.id, display_name: displayName, email: user.email };
         } else {
