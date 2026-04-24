@@ -226,9 +226,14 @@ const Storage = {
   },
 
   async upsertProfile(userId, fields) {
+    // Strip undefined values so we don't overwrite existing columns (e.g. phone)
+    const clean = Object.fromEntries(
+      Object.entries(fields).filter(([, v]) => v !== undefined)
+    );
     const { error } = await sb
       .from('profiles')
-      .upsert({ id: userId, ...fields, updated_at: new Date().toISOString() });
+      .upsert({ id: userId, ...clean, updated_at: new Date().toISOString() },
+               { onConflict: 'id' });
     if (error) throw error;
   },
 
@@ -1651,8 +1656,15 @@ const SmsSetup = (() => {
   }
 
   async function saveAndEnable() {
-    const phone = phoneEl?.value.trim();
-    if (!phone) { phoneEl?.focus(); return; }
+    const raw   = phoneEl?.value.trim();
+    const phone = SMS.normalizeUS(raw);
+    if (!raw) { phoneEl?.focus(); return; }
+    if (!phone) {
+      saveBtn.textContent = 'Bad number';
+      if (phoneEl) phoneEl.style.borderColor = 'var(--red, #e55)';
+      setTimeout(() => { saveBtn.textContent = 'Save & Enable'; if (phoneEl) phoneEl.style.borderColor = ''; }, 2000);
+      return;
+    }
     const userId = Auth.getUserId();
     saveBtn.textContent = '…';
     try {
@@ -1661,6 +1673,7 @@ const SmsSetup = (() => {
         if (s.profile) { s.profile.phone = phone; s.profile.sms_enabled = true; }
         return s;
       });
+      if (phoneEl) phoneEl.value = phone; // show normalized
       UI.setProfile(AppState.getState().profile);
       close();
     } catch (err) {
@@ -1775,12 +1788,20 @@ const ProfileMenu = (() => {
 
   // Save phone number
   savePhone?.addEventListener('click', async () => {
-    const phone = phoneInput?.value.trim();
+    const raw    = phoneInput?.value.trim();
     const userId = Auth.getUserId();
+    const phone  = SMS.normalizeUS(raw);
+    if (raw && !phone) {
+      savePhone.textContent = 'Bad #';
+      if (phoneInput) phoneInput.style.borderColor = 'var(--red, #e55)';
+      setTimeout(() => { savePhone.textContent = 'Save'; if (phoneInput) phoneInput.style.borderColor = ''; }, 2000);
+      return;
+    }
     savePhone.textContent = '…';
     try {
-      await Storage.upsertProfile(userId, { phone });
-      AppState.setState(s => { if (s.profile) s.profile.phone = phone; return s; });
+      await Storage.upsertProfile(userId, { phone: phone || null });
+      AppState.setState(s => { if (s.profile) s.profile.phone = phone || null; return s; });
+      if (phoneInput && phone) phoneInput.value = phone; // show normalized form
       UI.setProfile(AppState.getState().profile);
       savePhone.textContent = 'Saved!';
       setTimeout(() => { savePhone.textContent = 'Save'; }, 1800);
@@ -1876,70 +1897,110 @@ function initAuthUI() {
    ═══════════════════════════════════════════════════════════ */
 
 const SMS = (() => {
-  // ── Configure these two constants ──
-  const RAPIDAPI_KEY  = 'dcb909daaemshe763334aa4fc735p1b55a3jsn368557abcfad';
-  const RAPIDAPI_HOST = 'sms77io.p.rapidapi.com'; // swap for any RapidAPI SMS provider
+  // ── Setup ────────────────────────────────────────────────────
+  // 1. Go to https://rapidapi.com/seven-communication-seven-communication-default/api/sms77io
+  // 2. Subscribe to the FREE plan (100 SMS/month)
+  // 3. Copy your RapidAPI key and paste below
+  const RAPIDAPI_KEY  = 'YOUR_RAPIDAPI_KEY_HERE';
+  const RAPIDAPI_HOST = 'sms77io.p.rapidapi.com';
 
   /**
-   * Send a single SMS.
-   * @param {string} to    – E.164 format, e.g. "+12125551234"
-   * @param {string} text  – Message body (max ~160 chars for a single segment)
+   * Normalize a US phone number to E.164 (+1XXXXXXXXXX).
+   * Accepts: 2125551234, 212-555-1234, (212) 555-1234, +12125551234, etc.
    */
-  async function send(to, text) {
-    if (!to || !text) throw new Error('SMS: missing "to" or "text"');
-    if (RAPIDAPI_KEY === 'YOUR_RAPIDAPI_KEY_HERE') {
-      console.warn('SMS: set your RAPIDAPI_KEY in app.js to enable real sending.');
-      return { ok: false, reason: 'no_key' };
-    }
-
-    const resp = await fetch('https://sms77io.p.rapidapi.com/sms', {
-      method: 'POST',
-      headers: {
-        'content-type':    'application/json',
-        'X-RapidAPI-Key':  RAPIDAPI_KEY,
-        'X-RapidAPI-Host': RAPIDAPI_HOST,
-      },
-      body: JSON.stringify({ to, text, from: '15551234567' }),
-    });
-
-    if (!resp.ok) {
-      const err = await resp.text();
-      throw new Error(`SMS send failed: ${resp.status} ${err}`);
-    }
-    return resp.json();
+  function normalizeUS(raw) {
+    if (!raw) return null;
+    const digits = raw.replace(/\D/g, '');
+    if (digits.length === 10) return `+1${digits}`;
+    if (digits.length === 11 && digits[0] === '1') return `+${digits}`;
+    if (raw.startsWith('+') && digits.length === 11) return `+${digits}`;
+    return null;
   }
 
   /**
-   * Compute and dispatch all due reminders for the given card.
-   * Called on page load and whenever a card is saved.
-   * Skips reminders that are in the past or have no phone number.
-   * @param {object} card – card object with dueDate, dueTime, phone, reminders[]
+   * Send a single SMS via Seven (sms77io) on RapidAPI.
+   */
+  async function send(to, text) {
+    if (!to || !text) throw new Error('SMS: missing "to" or "text"');
+
+    if (RAPIDAPI_KEY === 'YOUR_RAPIDAPI_KEY_HERE') {
+      console.warn('SMS: paste your RapidAPI key into RAPIDAPI_KEY in app.js');
+      return { ok: false, reason: 'no_key' };
+    }
+
+    const normalized = normalizeUS(to);
+    if (!normalized) {
+      console.warn(`SMS: could not normalize "${to}" — skipping`);
+      return { ok: false, reason: 'bad_number' };
+    }
+
+    let resp;
+    try {
+      resp = await fetch('https://sms77io.p.rapidapi.com/sms', {
+        method: 'POST',
+        headers: {
+          'Content-Type':    'application/json',
+          'X-RapidAPI-Key':  RAPIDAPI_KEY,
+          'X-RapidAPI-Host': RAPIDAPI_HOST,
+        },
+        body: JSON.stringify({
+          to:   normalized,
+          text: text,
+          from: 'TaskDeck',  // max 11 chars for alphanumeric sender ID
+          json: 1,           // get structured JSON response back
+        }),
+      });
+    } catch (networkErr) {
+      console.error('SMS network error:', networkErr);
+      throw networkErr;
+    }
+
+    const payload = await resp.json().catch(() => ({}));
+
+    if (!resp.ok) {
+      console.error('SMS send failed:', resp.status, payload);
+      throw new Error(`SMS failed (${resp.status}): ${JSON.stringify(payload)}`);
+    }
+
+    // Seven returns { success: "100", total_price: ..., messages: [...] }
+    // success "100" = sent, anything else = error
+    if (payload.success && payload.success !== '100') {
+      console.error('SMS rejected by Seven:', payload);
+      throw new Error(`SMS rejected: code ${payload.success}`);
+    }
+
+    console.log('SMS sent OK →', normalized);
+    return payload;
+  }
+
+  /**
+   * Schedule reminders for a card. Called when a card is saved.
    */
   async function dispatchCardReminders(card) {
     const phone = card.phone?.trim();
     if (!phone) return;
-
     const now = Date.now();
 
-    // Main due-date reminder (1 hour before deadline)
+    // Main due-date reminder — 1 hour before deadline
     if (card.dueDate) {
-      const timeStr = card.dueTime || '09:00';
-      const deadline = new Date(`${card.dueDate}T${timeStr}`).getTime();
-      const triggerAt = deadline - 60 * 60 * 1000; // 1 h before
+      const timeStr   = card.dueTime || '09:00';
+      const deadline  = new Date(`${card.dueDate}T${timeStr}`).getTime();
+      const triggerAt = deadline - 60 * 60 * 1000;
       if (triggerAt > now) {
         const delay = triggerAt - now;
-        const msg = `TaskDeck reminder: "${card.title}" is due at ${formatTime12(timeStr)} on ${card.dueDate}.`;
+        const msg = `TaskDeck: "${card.title}" is due at ${formatTime12(timeStr)} on ${card.dueDate}.`;
+        console.log(`SMS scheduled in ${Math.round(delay / 60000)} min → "${card.title}"`);
         setTimeout(() => send(phone, msg).catch(console.error), delay);
       }
     }
 
     // Custom per-card reminders
-    (card.reminders || []).forEach(r => {
+    (card.reminders || []).forEach((r, i) => {
       if (!r.date) return;
       const t = new Date(`${r.date}T${r.time || '09:00'}`).getTime();
       if (t > now) {
         const delay = t - now;
-        const msg = `TaskDeck reminder: "${card.title}"${card.dueDate ? ` is due ${card.dueDate}` : ''}.`;
+        const msg = `TaskDeck reminder: "${card.title}"${card.dueDate ? ` (due ${card.dueDate})` : ''}.`;
         setTimeout(() => send(phone, msg).catch(console.error), delay);
       }
     });
@@ -1953,7 +2014,7 @@ const SMS = (() => {
     return `${hh}:${String(m).padStart(2,'0')} ${ampm}`;
   }
 
-  return { send, dispatchCardReminders, formatTime12 };
+  return { send, normalizeUS, dispatchCardReminders, formatTime12 };
 })();
 
 let isAppInitialized = false;
@@ -1979,58 +2040,98 @@ document.addEventListener('DOMContentLoaded', async () => {
       isAppInitialized = true;
       UI.hideAuth();
 
-      try {
-        UI.setLoading('Fetching profile…', 40);
-        let profile = await Storage.getProfile(user.id);
-        if (!profile) {
-          UI.setLoading('Creating profile…', 50);
-          const displayName = user.user_metadata?.display_name || user.user_metadata?.full_name || user.user_metadata?.name || '';
-          await Storage.upsertProfile(user.id, { display_name: displayName, email: user.email });
-          profile = { id: user.id, display_name: displayName, email: user.email };
-        } else {
-          profile.email = user.email;
+      // Retry wrapper — transient network issues shouldn't kill the session
+      async function withRetry(label, pct, fn, retries = 3) {
+        for (let i = 0; i < retries; i++) {
+          try {
+            UI.setLoading(label, pct);
+            return await fn();
+          } catch (err) {
+            if (i === retries - 1) throw err;
+            UI.setLoading(`${label} (retrying…)`, pct);
+            await new Promise(r => setTimeout(r, 1000 * (i + 1))); // 1s, 2s backoff
+          }
         }
+      }
 
-        UI.setLoading('Syncing boards…', 70);
-        const boards = await Storage.getBoards(user.id);
+      try {
+        // Always upsert the profile — avoids the race condition where the
+        // trigger-created row isn't visible yet, and handles new Google users
+        // whose profile may not exist yet.
+        await withRetry('Syncing profile…', 40, () => {
+          const displayName =
+            user.user_metadata?.display_name ||
+            user.user_metadata?.full_name    ||
+            user.user_metadata?.name         || '';
+          return Storage.upsertProfile(user.id, {
+            display_name: displayName || undefined,
+            email:        user.email,
+          });
+        });
+
+        // Fetch the full profile row after upsert
+        const profileRow = await withRetry('Loading profile…', 55, () =>
+          Storage.getProfile(user.id)
+        );
+        const profile = profileRow
+          ? { ...profileRow, email: user.email }
+          : { id: user.id, email: user.email, display_name: '' };
+
+        // Fetch boards
+        const boards = await withRetry('Syncing boards…', 75, () =>
+          Storage.getBoards(user.id)
+        );
 
         AppState.setState(() => ({
-          view: 'dashboard',
+          view:       'dashboard',
           profile,
           boards,
-          boardId: null,
+          boardId:    null,
           boardTitle: '',
           boardColor: '#C97D4E',
-          lists: [],
+          lists:      [],
         }), true);
 
         UI.setProfile(profile);
-        UI.setLoading('Success', 100);
-        
+        UI.setLoading('Ready!', 100);
         UI.hideLoading();
         UI.showApp();
         UI.showDashboard();
         Dashboard.render();
+
       } catch (err) {
+        // Don't sign the user out — a network blip shouldn't destroy their session.
+        // Show a retry button instead.
         console.error('Boot error:', err);
         isAppInitialized = false;
-        UI.setLoading('Failed to sync data. Please refresh.', 100);
-        UI.authError('Session error. Please sign in again.');
-        Auth.signOut();
+        UI.setLoading('Could not load your data.', 100);
+
+        // Swap loading text for a retry button
+        const loadingInner = document.querySelector('.loading-inner');
+        if (loadingInner) {
+          const retryBtn = document.createElement('button');
+          retryBtn.textContent = 'Retry';
+          retryBtn.className   = 'btn-primary';
+          retryBtn.style.cssText = 'margin-top:16px;';
+          retryBtn.onclick = () => window.location.reload();
+          // Remove any existing retry button first
+          loadingInner.querySelector('.btn-primary')?.remove();
+          loadingInner.appendChild(retryBtn);
+        }
       }
     },
     () => {
       isAppInitialized = false;
       AppState.setState(() => ({
-        view: 'dashboard',
-        profile: null,
-        boards: [],
-        boardId: null,
+        view:        'dashboard',
+        profile:     null,
+        boards:      [],
+        boardId:     null,
         searchQuery: '',
-        sortOrder: 'recent',
-        boardTitle: '',
-        boardColor: '#C97D4E',
-        lists: [],
+        sortOrder:   'recent',
+        boardTitle:  '',
+        boardColor:  '#C97D4E',
+        lists:       [],
       }), true);
       UI.hideLoading();
       UI.hideApp();
