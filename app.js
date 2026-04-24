@@ -1896,21 +1896,108 @@ function initAuthUI() {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   SMS REMINDERS (RapidAPI)
-   ═══════════════════════════════════════════════════════════
-   Replace RAPIDAPI_KEY with your key from rapidapi.com.
-   The default host targets the "sms77" (now "seven") API which
-   is widely available on RapidAPI. Swap host + endpoint for any
-   other SMS provider on the platform — the shape stays the same.
+   SMS REMINDERS
+   API key is stored in Supabase Edge Function secrets — never
+   in this file. See send-sms.ts for the server-side function.
    ═══════════════════════════════════════════════════════════ */
 
 const SMS = (() => {
-  // ── Setup ────────────────────────────────────────────────────
-  // 1. Go to https://rapidapi.com/seven-communication-seven-communication-default/api/sms77io
-  // 2. Subscribe to the FREE plan (100 SMS/month)
-  // 3. Copy your RapidAPI key and paste below
-  const RAPIDAPI_KEY  = 'YOUR_RAPIDAPI_KEY_HERE';
-  const RAPIDAPI_HOST = 'sms77io.p.rapidapi.com';
+  // No API keys here — the key lives in Supabase Edge Function secrets.
+  // Supabase → Edge Functions → Manage Secrets → add RAPIDAPI_KEY
+
+  /**
+   * Normalize a US phone number to E.164 (+1XXXXXXXXXX).
+   * Accepts: 2125551234, 212-555-1234, (212) 555-1234, +12125551234, etc.
+   */
+  function normalizeUS(raw) {
+    if (!raw) return null;
+    const digits = raw.replace(/\D/g, '');
+    if (digits.length === 10) return `+1${digits}`;
+    if (digits.length === 11 && digits[0] === '1') return `+${digits}`;
+    if (raw.startsWith('+') && digits.length === 11) return `+${digits}`;
+    return null;
+  }
+
+  /**
+   * Send SMS via the Supabase Edge Function (keeps API key off the client).
+   */
+  async function send(to, text) {
+    if (!to || !text) throw new Error('SMS: missing "to" or "text"');
+
+    const normalized = normalizeUS(to);
+    if (!normalized) {
+      console.warn(`SMS: could not normalize "${to}" — skipping`);
+      return { ok: false, reason: 'bad_number' };
+    }
+
+    // Get the current session token to authenticate the Edge Function call
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) {
+      console.warn('SMS: no active session — skipping');
+      return { ok: false, reason: 'no_session' };
+    }
+
+    const resp = await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
+      method: 'POST',
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+        'apikey':        SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify({ to: normalized, text }),
+    });
+
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      console.error('SMS Edge Function error:', resp.status, payload);
+      throw new Error(`SMS failed (${resp.status}): ${payload?.error || JSON.stringify(payload)}`);
+    }
+
+    console.log('SMS sent OK →', normalized);
+    return payload;
+  }
+
+  /**
+   * Schedule reminders for a card. Called when a card is saved.
+   */
+  async function dispatchCardReminders(card) {
+    const phone = card.phone?.trim();
+    if (!phone) return;
+    const now = Date.now();
+
+    if (card.dueDate) {
+      const timeStr   = card.dueTime || '09:00';
+      const deadline  = new Date(`${card.dueDate}T${timeStr}`).getTime();
+      const triggerAt = deadline - 60 * 60 * 1000;
+      if (triggerAt > now) {
+        const delay = triggerAt - now;
+        const msg = `TaskDeck: "${card.title}" is due at ${formatTime12(timeStr)} on ${card.dueDate}.`;
+        console.log(`SMS scheduled in ${Math.round(delay / 60000)} min → "${card.title}"`);
+        setTimeout(() => send(phone, msg).catch(console.error), delay);
+      }
+    }
+
+    (card.reminders || []).forEach((r) => {
+      if (!r.date) return;
+      const t = new Date(`${r.date}T${r.time || '09:00'}`).getTime();
+      if (t > now) {
+        const delay = t - now;
+        const msg = `TaskDeck reminder: "${card.title}"${card.dueDate ? ` (due ${card.dueDate})` : ''}.`;
+        setTimeout(() => send(phone, msg).catch(console.error), delay);
+      }
+    });
+  }
+
+  function formatTime12(val) {
+    if (!val) return '';
+    const [h, m] = val.split(':').map(Number);
+    const ampm = h < 12 ? 'AM' : 'PM';
+    const hh   = h % 12 === 0 ? 12 : h % 12;
+    return `${hh}:${String(m).padStart(2,'0')} ${ampm}`;
+  }
+
+  return { send, normalizeUS, dispatchCardReminders, formatTime12 };
+})();
 
   /**
    * Normalize a US phone number to E.164 (+1XXXXXXXXXX).
