@@ -29,13 +29,10 @@ const Theme = (() => {
   function apply(theme) {
     currentTheme = theme;
     localStorage.setItem(STORAGE_KEY, theme);
-
     const m = window.matchMedia?.('(prefers-color-scheme: dark)');
     const prefersDark = m ? m.matches : false;
     const useDark     = theme === 'dark' || (theme === 'system' && prefersDark);
     document.documentElement.setAttribute('data-theme', useDark ? 'dark' : 'light');
-
-    // Highlight active button
     document.querySelectorAll('.theme-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.theme === theme);
     });
@@ -46,11 +43,10 @@ const Theme = (() => {
     const m = window.matchMedia?.('(prefers-color-scheme: dark)');
     const handler = () => { if (currentTheme === 'system') apply('system'); };
     if (m?.addEventListener) m.addEventListener('change', handler);
-    else if (m?.addListener) m.addListener(handler); // Fallback for older Safari
+    else if (m?.addListener) m.addListener(handler);
   }
 
   function get() { return currentTheme; }
-
   return { init, apply, get };
 })();
 
@@ -69,10 +65,8 @@ const UI = {
   },
   showLoading() { this.el('loadingScreen')?.classList.add('visible'); },
   hideLoading() { this.el('loadingScreen')?.classList.remove('visible'); },
-
   showAuth()    { this.el('authOverlay')?.classList.add('visible'); },
   hideAuth()    { this.el('authOverlay')?.classList.remove('visible'); },
-
   showApp()     { const s = this.el('appShell'); if (s) s.style.display = 'flex'; },
   hideApp()     { const s = this.el('appShell'); if (s) s.style.display = 'none'; },
 
@@ -81,7 +75,7 @@ const UI = {
     const label = this.el('syncLabel');
     if (!dot || !label) return;
     dot.className     = `sync-dot sync-${status}`;
-    label.textContent = status === 'saving' ? 'Saving…' : status === 'error' ? 'Error' : 'Saved';
+    label.textContent = status === 'saving' ? 'Saving\u2026' : status === 'error' ? 'Error' : 'Saved';
   },
 
   authError(msg) {
@@ -92,36 +86,49 @@ const UI = {
   },
 
   showDashboard() {
-    this.el('dashboard').style.display      = '';
-    this.el('boardContainer').style.display = 'none';
+    this.el('dashboard').style.display       = '';
+    this.el('boardContainer').style.display  = 'none';
     this.el('boardBreadcrumb').style.display = 'none';
     this.el('addListBtn').style.display      = 'none';
     this.el('boardSettingsBtn').style.display = 'none';
-    this.el('shareBoardFromBoardBtn') && (this.el('shareBoardFromBoardBtn').style.display = 'none');
+    if (this.el('shareBoardFromBoardBtn')) this.el('shareBoardFromBoardBtn').style.display = 'none';
     this.el('syncStatus').style.display      = 'none';
     this.el('headerTabs').style.display      = '';
     this.el('messagesView').style.display    = 'none';
+    const fv = this.el('forumView'); if (fv) fv.style.display = 'none';
   },
 
   showMessages() {
     this.el('dashboard').style.display      = 'none';
     this.el('messagesView').style.display   = 'flex';
     this.el('boardContainer').style.display = 'none';
-    this.el('headerTabs').style.display      = '';
-    this.el('syncStatus').style.display      = 'none';
-    this.el('shareBoardFromBoardBtn') && (this.el('shareBoardFromBoardBtn').style.display = 'none');
+    this.el('headerTabs').style.display     = '';
+    this.el('syncStatus').style.display     = 'none';
+    if (this.el('shareBoardFromBoardBtn')) this.el('shareBoardFromBoardBtn').style.display = 'none';
+    const fv = this.el('forumView'); if (fv) fv.style.display = 'none';
+  },
+
+  showForum() {
+    this.el('dashboard').style.display      = 'none';
+    this.el('messagesView').style.display   = 'none';
+    this.el('boardContainer').style.display = 'none';
+    this.el('headerTabs').style.display     = '';
+    this.el('syncStatus').style.display     = 'none';
+    if (this.el('shareBoardFromBoardBtn')) this.el('shareBoardFromBoardBtn').style.display = 'none';
+    const fv = this.el('forumView'); if (fv) fv.style.display = '';
   },
 
   showBoard() {
-    this.el('dashboard').style.display      = 'none';
-    this.el('boardContainer').style.display = '';
+    this.el('dashboard').style.display       = 'none';
+    this.el('boardContainer').style.display  = '';
     this.el('boardBreadcrumb').style.display = '';
     this.el('addListBtn').style.display      = '';
     this.el('boardSettingsBtn').style.display = '';
-    this.el('shareBoardFromBoardBtn') && (this.el('shareBoardFromBoardBtn').style.display = '');
+    if (this.el('shareBoardFromBoardBtn')) this.el('shareBoardFromBoardBtn').style.display = '';
     this.el('syncStatus').style.display      = '';
     this.el('messagesView').style.display    = 'none';
     this.el('headerTabs').style.display      = 'none';
+    const fv = this.el('forumView'); if (fv) fv.style.display = 'none';
   },
 
   setProfile(profile) {
@@ -135,6 +142,7 @@ const UI = {
     const lg  = this.el('profileAvatarLg');
     if (btn) { btn.textContent = initial; btn.style.background = profile?.avatar_color || '#C97D4E'; }
     if (lg)  { lg.textContent  = initial; lg.style.background  = profile?.avatar_color || '#C97D4E'; }
+
     const n = this.el('profileName');
     const e = this.el('profileEmail');
     const i = this.el('profileNameInput');
@@ -142,17 +150,15 @@ const UI = {
     if (e) e.textContent = email;
     if (i) i.value       = name;
 
-    // User ID display
-    const uid = profile?.id || '';
-    const uidEl = this.el('profileUserId');
-    if (uidEl) uidEl.textContent = uid ? uid.slice(0, 8) + '…' : '';
+    const uid    = profile?.id || '';
+    const uidEl  = this.el('profileUserId');
+    if (uidEl) uidEl.textContent = uid ? uid.slice(0, 8) + '\u2026' : '';
     const uidFull = this.el('profileUserIdFull');
     if (uidFull) uidFull.value = uid;
 
-    // Phone + SMS toggle
-    const pi = this.el('profilePhoneInput');
+    const pi        = this.el('profilePhoneInput');
     if (pi) pi.value = phone;
-    const toggle  = this.el('smsToggle');
+    const toggle    = this.el('smsToggle');
     const phoneWrap = this.el('profilePhoneWrap');
     if (toggle) {
       toggle.classList.toggle('on', smsOn);
@@ -173,20 +179,15 @@ const Auth = (() => {
   function getUserId() { return currentUser?.id ?? null; }
 
   async function init(onSignedIn, onSignedOut) {
-    // Use getSession() first to handle the initial state synchronously,
-    // then onAuthStateChange handles subsequent events (OAuth redirects, sign-out).
-    // This prevents the white-screen / infinite-loading race condition where
-    // INITIAL_SESSION fires before the UI is ready.
     let handledUserId = null;
 
     async function handleSignIn(user) {
-      if (handledUserId === user.id) return; // idempotent
+      if (handledUserId === user.id) return;
       handledUserId = user.id;
-      currentUser = user;
+      currentUser   = user;
       await onSignedIn(currentUser);
     }
 
-    // First, check if there's already a session (covers page reloads + OAuth redirect-back)
     const { data: { session: initialSession } } = await sb.auth.getSession();
     if (initialSession?.user) {
       await handleSignIn(initialSession.user);
@@ -194,17 +195,14 @@ const Auth = (() => {
       onSignedOut();
     }
 
-    // Listen for subsequent changes (new sign-in, sign-out, token refresh)
     sb.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
         await handleSignIn(session.user);
       } else if (event === 'SIGNED_OUT') {
         handledUserId = null;
-        currentUser = null;
+        currentUser   = null;
         onSignedOut();
       }
-      // INITIAL_SESSION is now handled above via getSession(); ignore it here.
-      // TOKEN_REFRESHED: silent renewal, no action needed.
     });
   }
 
@@ -227,51 +225,38 @@ const Auth = (() => {
   }
 
   return { init, signIn, signUp, signOut, getUser, getUserId };
-
 })();
 
 /* ═══════════════════════════════════════════════════════════
-   STORAGE  (profiles, boards, lists, cards)
-   Groups, messages, and board-sharing helpers live in their
-   respective modules (messaging.js / sharing.js).
+   STORAGE
    ═══════════════════════════════════════════════════════════ */
 
 const Storage = {
 
-  /* ── Profiles ── */
-
   async getProfile(userId) {
-    const { data, error } = await sb
-      .from('profiles').select('*').eq('id', userId).single();
+    const { data, error } = await sb.from('profiles').select('*').eq('id', userId).single();
     if (error && error.code !== 'PGRST116') throw error;
     return data;
   },
 
   async upsertProfile(userId, fields) {
-    const clean = Object.fromEntries(
-      Object.entries(fields).filter(([, v]) => v !== undefined)
-    );
-    const { error } = await sb
-      .from('profiles')
+    const clean = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined));
+    const { error } = await sb.from('profiles')
       .upsert({ id: userId, ...clean, updated_at: new Date().toISOString() }, { onConflict: 'id' });
     if (error) throw error;
   },
 
-  /* ── Boards ── */
-
   async getBoards(userId) {
-    const { data, error } = await sb
-      .from('boards')
+    const { data, error } = await sb.from('boards')
       .select('id, title, color, created_at, updated_at, is_pinned')
-      .eq('user_id', userId)
-      .order('updated_at', { ascending: false });
+      .eq('user_id', userId).order('updated_at', { ascending: false });
     if (error) throw error;
     return data ?? [];
   },
 
   async createBoard(userId, title, color) {
-    const { data, error } = await sb
-      .from('boards').insert({ user_id: userId, title, color }).select().single();
+    const { data, error } = await sb.from('boards')
+      .insert({ user_id: userId, title, color }).select().single();
     if (error) throw error;
     return data;
   },
@@ -297,8 +282,6 @@ const Storage = {
     const { error } = await sb.from('boards').delete().eq('id', boardId);
     if (error) throw error;
   },
-
-  /* ── Board init (single RPC) ── */
 
   async initBoard(boardId) {
     const { data, error } = await sb.rpc('load_board', { p_board_id: boardId });
@@ -329,11 +312,9 @@ const Storage = {
     if (error) throw error;
   },
 
-  /* ── Lists ── */
-
   async createList(boardId, title, position) {
-    const { data, error } = await sb
-      .from('lists').insert({ board_id: boardId, title, position }).select().single();
+    const { data, error } = await sb.from('lists')
+      .insert({ board_id: boardId, title, position }).select().single();
     if (error) throw error;
     return data;
   },
@@ -348,11 +329,9 @@ const Storage = {
     if (error) throw error;
   },
 
-  /* ── Cards ── */
-
   async createCard(boardId, listId, title, position) {
-    const { data, error } = await sb
-      .from('cards').insert({ board_id: boardId, list_id: listId, title, position }).select().single();
+    const { data, error } = await sb.from('cards')
+      .insert({ board_id: boardId, list_id: listId, title, position }).select().single();
     if (error) throw error;
     return data;
   },
@@ -369,9 +348,7 @@ const Storage = {
   },
 
   async reorderCards(cards) {
-    await Promise.all(cards.map((c, i) =>
-      sb.from('cards').update({ position: i }).eq('id', c.id)
-    ));
+    await Promise.all(cards.map((c, i) => sb.from('cards').update({ position: i }).eq('id', c.id)));
   },
 
   async deleteCard(cardId) {
@@ -384,11 +361,99 @@ const Storage = {
     if (error) throw error;
   },
 
-  /* ── Shared boards (used by Dashboard) ── */
+  // Board sharing — accepts email OR friend-code UUID (share_board_flex RPC)
+  async shareBoard(boardId, identifier, permission) {
+    permission = permission || 'view';
+    const { error } = await sb.rpc('share_board_flex', {
+      p_board_id:   boardId,
+      p_identifier: identifier.trim(),
+      p_permission: permission,
+    });
+    if (error) throw error;
+  },
+
   async getSharedBoards() {
     const { data, error } = await sb.rpc('get_shared_boards');
     if (error) throw error;
     return data ?? [];
+  },
+
+  async getBoardShares(boardId) {
+    const { data, error } = await sb.rpc('get_board_shares', { p_board_id: boardId });
+    if (error) throw error;
+    return data ?? [];
+  },
+
+  async removeShare(shareId) {
+    const { error } = await sb.from('board_shares').delete().eq('id', shareId);
+    if (error) throw error;
+  },
+
+  async createGroup(name, description) {
+    description = description || null;
+    const { data, error } = await sb.rpc('create_group', { p_name: name, p_description: description });
+    if (error) throw error;
+    return data;
+  },
+
+  async getUserGroups() {
+    const { data, error } = await sb.rpc('get_user_groups');
+    if (error) throw error;
+    return data ?? [];
+  },
+
+  // Accepts email OR friend-code UUID (add_group_member_flex RPC)
+  async addGroupMember(groupId, identifier) {
+    const { data, error } = await sb.rpc('add_group_member_flex', {
+      p_group_id:   groupId,
+      p_identifier: identifier.trim(),
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  async getGroupMembers(groupId) {
+    const { data, error } = await sb.rpc('get_group_members', { p_group_id: groupId });
+    if (error) throw error;
+    return data ?? [];
+  },
+
+  async getGroupMessages(groupId, limit) {
+    limit = limit || 50;
+    const { data, error } = await sb.rpc('get_group_messages', { p_group_id: groupId, p_limit: limit });
+    if (error) throw error;
+    return data ?? [];
+  },
+
+  async sendMessage(groupId, content) {
+    const { data, error } = await sb.rpc('send_message', { p_group_id: groupId, p_content: content });
+    if (error) throw error;
+    return data;
+  },
+
+  subscribeToMessages(groupId, callback) {
+    return sb.channel('messages:' + groupId)
+      .on('postgres_changes', {
+        event: 'INSERT', schema: 'public', table: 'messages',
+        filter: 'group_id=eq.' + groupId,
+      }, function(payload) { callback(payload.new); })
+      .subscribe();
+  },
+
+  async getForumPosts(page, pageSize) {
+    page     = page     || 0;
+    pageSize = pageSize || 20;
+    const { data, error } = await sb.from('forum_posts')
+      .select('id, content, created_at, user_id, profiles!user_id(display_name, avatar_color)')
+      .order('created_at', { ascending: false })
+      .range(page * pageSize, (page + 1) * pageSize - 1);
+    if (error) throw error;
+    return data ?? [];
+  },
+
+  async createForumPost(content, userId) {
+    const { error } = await sb.from('forum_posts').insert({ content: content, user_id: userId });
+    if (error) throw error;
   },
 };
 
@@ -398,25 +463,26 @@ const Storage = {
 
 const AppState = (() => {
   let state = {
-    view:       'dashboard', // 'dashboard' | 'board' | 'messages'
-    tab:        'boards',    // 'boards' | 'shared' | 'groups' | 'messages'
-    profile:    null,
-    boards:     [],
+    view:         'dashboard',
+    tab:          'boards',
+    profile:      null,
+    boards:       [],
     sharedBoards: [],
-    groups:     [],
-    boardId:    null,
-    searchQuery: '',
-    sortOrder:   'recent', // 'recent' | 'oldest' | 'alpha' | 'alpha-rev'
-    boardTitle: '',
-    boardColor: '#C97D4E',
-    lists:      [],
+    groups:       [],
+    boardId:      null,
+    searchQuery:  '',
+    sortOrder:    'recent',
+    boardTitle:   '',
+    boardColor:   '#C97D4E',
+    lists:        [],
   };
   const subs = [];
 
   function getState()  { return JSON.parse(JSON.stringify(state)); }
-  function setState(fn, silent = false) {
-    state = fn(JSON.parse(JSON.stringify(state)));
-    if (!silent) subs.forEach(f => f(state));
+  function setState(fn, silent) {
+    silent = silent || false;
+    state  = fn(JSON.parse(JSON.stringify(state)));
+    if (!silent) subs.forEach(function(f) { f(state); });
   }
   function subscribe(fn) { subs.push(fn); }
 
@@ -431,30 +497,30 @@ const DragEngine = (() => {
   let ds = null;
 
   function start(cardEl, cardId, listId) {
-    const rect = cardEl.getBoundingClientRect();
+    const rect  = cardEl.getBoundingClientRect();
     const ghost = cardEl.cloneNode(true);
     ghost.classList.add('drag-ghost');
-    ghost.style.cssText = `position:fixed;width:${rect.width}px;top:${rect.top}px;left:${rect.left}px;pointer-events:none;z-index:9999;margin:0;`;
+    ghost.style.cssText = 'position:fixed;width:' + rect.width + 'px;top:' + rect.top + 'px;left:' + rect.left + 'px;pointer-events:none;z-index:9999;margin:0;';
     document.body.appendChild(ghost);
     const ph = document.createElement('div');
     ph.className = 'card-drop-placeholder';
     cardEl.parentNode.insertBefore(ph, cardEl);
     cardEl.classList.add('dragging');
-    ds = { cardId, listId, ghostEl: ghost, placeholder: ph };
+    ds = { cardId: cardId, listId: listId, ghostEl: ghost, placeholder: ph };
   }
 
   function move(x, y) {
     if (!ds) return;
-    ds.ghostEl.style.left = `${x - 20}px`;
-    ds.ghostEl.style.top  = `${y - 20}px`;
+    ds.ghostEl.style.left = (x - 20) + 'px';
+    ds.ghostEl.style.top  = (y - 20) + 'px';
   }
 
   function end(targetListId, targetIndex) {
     if (!ds) return null;
-    const result = { cardId: ds.cardId, sourceListId: ds.listId, targetListId, targetIndex };
+    const result = { cardId: ds.cardId, sourceListId: ds.listId, targetListId: targetListId, targetIndex: targetIndex };
     ds.ghostEl.remove();
     if (ds.placeholder.parentNode) ds.placeholder.remove();
-    document.querySelector(`.card[data-card-id="${ds.cardId}"]`)?.classList.remove('dragging');
+    document.querySelector('.card[data-card-id="' + ds.cardId + '"]')?.classList.remove('dragging');
     ds = null;
     return result;
   }
@@ -482,28 +548,29 @@ const Render = {
     const el = document.createElement('div');
     el.className = 'board-card';
     el.dataset.boardId = board.id;
-    const color = board.color || '#C97D4E';
+    const color    = board.color || '#C97D4E';
     const isShared = !!board.permission_level;
-    el.title = `Open ${board.title}`;
-    el.innerHTML = `
-      <div class="board-card-color" style="background:${color};"></div>
-      <div class="board-card-body">
-        <div class="board-card-title">${this.esc(board.title)}</div>
-        <div class="board-card-meta">${new Date(board.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
-        ${isShared ? `<div class="board-card-perm">${board.permission_level} access</div>` : ''}
-      </div>
-      <div class="board-card-actions">
-        <button class="board-card-pin ${board.is_pinned ? 'active' : ''}" data-board-pin="${board.id}" aria-label="${board.is_pinned ? 'Unpin' : 'Pin'} board" title="${board.is_pinned ? 'Unpin' : 'Pin'} board">
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M12.5 5.5l-3-3M6.5 12.5l-3-3M4 12l2-2M10 4l2-2M5 5l6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-        ${!isShared ? `
-          <button class="board-card-share" data-board-share="${board.id}" aria-label="Share board" title="Share board">
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><circle cx="13" cy="3" r="1.8" stroke="currentColor" stroke-width="1.4"/><circle cx="3" cy="8" r="1.8" stroke="currentColor" stroke-width="1.4"/><circle cx="13" cy="13" r="1.8" stroke="currentColor" stroke-width="1.4"/><path d="M4.7 7.1l6.6-3M4.7 9l6.6 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-          </button>
-          <button class="board-card-delete" data-board-delete="${board.id}" aria-label="Delete board" title="Delete board">
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M2 4h12l-1.5 9H3.5L2 4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M5.5 2h5M1 4h14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-          </button>` : ''}
-      </div>`;
+    el.title = 'Open ' + board.title;
+    el.innerHTML =
+      '<div class="board-card-color" style="background:' + color + ';"></div>' +
+      '<div class="board-card-body">' +
+        '<div class="board-card-title">' + this.esc(board.title) + '</div>' +
+        '<div class="board-card-meta">' + new Date(board.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) + '</div>' +
+        (isShared ? '<div class="board-card-perm">' + board.permission_level + ' access</div>' : '') +
+      '</div>' +
+      '<div class="board-card-actions">' +
+        '<button class="board-card-pin ' + (board.is_pinned ? 'active' : '') + '" data-board-pin="' + board.id + '" aria-label="' + (board.is_pinned ? 'Unpin' : 'Pin') + ' board">' +
+          '<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M12.5 5.5l-3-3M6.5 12.5l-3-3M4 12l2-2M10 4l2-2M5 5l6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+        '</button>' +
+        (!isShared ?
+          '<button class="board-card-share" data-board-share="' + board.id + '" aria-label="Share board">' +
+            '<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><circle cx="13" cy="3" r="1.8" stroke="currentColor" stroke-width="1.4"/><circle cx="3" cy="8" r="1.8" stroke="currentColor" stroke-width="1.4"/><circle cx="13" cy="13" r="1.8" stroke="currentColor" stroke-width="1.4"/><path d="M4.7 7.1l6.6-3M4.7 9l6.6 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>' +
+          '</button>' +
+          '<button class="board-card-delete" data-board-delete="' + board.id + '" aria-label="Delete board">' +
+            '<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M2 4h12l-1.5 9H3.5L2 4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M5.5 2h5M1 4h14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>' +
+          '</button>'
+        : '') +
+      '</div>';
     return el;
   },
 
@@ -516,21 +583,26 @@ const Render = {
     el.setAttribute('aria-label', card.title);
     const meta = [];
     if (card.dueDate) {
-      const d = new Date(card.dueDate + 'T00:00:00');
+      const d     = new Date(card.dueDate + 'T00:00:00');
       const today = new Date(); today.setHours(0,0,0,0);
-      const timeLabel = card.dueTime ? ` ${SMS.formatTime12(card.dueTime)}` : '';
-      meta.push(`<span class="card-badge date ${d < today ? 'overdue' : ''}">
-        <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="14" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M5 1v3M11 1v3M1 7h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}${timeLabel}</span>`);
+      const timeLabel = card.dueTime ? ' ' + SMS.formatTime12(card.dueTime) : '';
+      meta.push('<span class="card-badge date ' + (d < today ? 'overdue' : '') + '">' +
+        '<svg width="10" height="10" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="14" height="13" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M5 1v3M11 1v3M1 7h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>' +
+        d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + timeLabel +
+        '</span>');
     }
-    if (card.description) meta.push(`<span class="card-badge desc">
-      <svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h8M2 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      Note</span>`);
-    if (card.priority) meta.push(`<span class="card-badge priority-${card.priority}">${this.cap(card.priority)}</span>`);
-    el.innerHTML = `
-      <div class="card-priority-bar" aria-hidden="true"></div>
-      <div class="card-title">${this.esc(card.title)}</div>
-      ${meta.length ? `<div class="card-meta">${meta.join('')}</div>` : ''}`;
+    if (card.description) {
+      meta.push('<span class="card-badge desc">' +
+        '<svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h8M2 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>' +
+        'Note</span>');
+    }
+    if (card.priority) {
+      meta.push('<span class="card-badge priority-' + card.priority + '">' + this.cap(card.priority) + '</span>');
+    }
+    el.innerHTML =
+      '<div class="card-priority-bar" aria-hidden="true"></div>' +
+      '<div class="card-title">' + this.esc(card.title) + '</div>' +
+      (meta.length ? '<div class="card-meta">' + meta.join('') + '</div>' : '');
     return el;
   },
 
@@ -539,32 +611,32 @@ const Render = {
     el.className = 'list';
     el.dataset.listId = list.id;
     el.setAttribute('role', 'list');
-    el.innerHTML = `
-      <div class="list-header">
-        <div class="list-menu-header-wrap" style="position:relative;display:flex;align-items:center;gap:6px;flex:1;">
-          <div class="list-title" contenteditable="true" spellcheck="false" data-list-id="${list.id}">${this.esc(list.title)}</div>
-        </div>
-        <span class="list-card-count" data-list-count="${list.id}">${list.cards.length}</span>
-        <button class="list-menu-btn" aria-label="List options" data-list-menu="${list.id}">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <circle cx="8" cy="3" r="1.2" fill="currentColor"/>
-            <circle cx="8" cy="8" r="1.2" fill="currentColor"/>
-            <circle cx="8" cy="13" r="1.2" fill="currentColor"/>
-          </svg>
-        </button>
-      </div>
-      <div class="cards-container" data-list-id="${list.id}" role="list"></div>
-      <div class="list-footer">
-        <button class="add-card-btn" data-add-card="${list.id}">
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-          Add Card
-        </button>
-      </div>`;
+    el.innerHTML =
+      '<div class="list-header">' +
+        '<div class="list-menu-header-wrap" style="position:relative;display:flex;align-items:center;gap:6px;flex:1;">' +
+          '<div class="list-title" contenteditable="true" spellcheck="false" data-list-id="' + list.id + '">' + this.esc(list.title) + '</div>' +
+        '</div>' +
+        '<span class="list-card-count" data-list-count="' + list.id + '">' + list.cards.length + '</span>' +
+        '<button class="list-menu-btn" aria-label="List options" data-list-menu="' + list.id + '">' +
+          '<svg width="16" height="16" viewBox="0 0 16 16" fill="none">' +
+            '<circle cx="8" cy="3" r="1.2" fill="currentColor"/>' +
+            '<circle cx="8" cy="8" r="1.2" fill="currentColor"/>' +
+            '<circle cx="8" cy="13" r="1.2" fill="currentColor"/>' +
+          '</svg>' +
+        '</button>' +
+      '</div>' +
+      '<div class="cards-container" data-list-id="' + list.id + '" role="list"></div>' +
+      '<div class="list-footer">' +
+        '<button class="add-card-btn" data-add-card="' + list.id + '">' +
+          '<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>' +
+          ' Add Card' +
+        '</button>' +
+      '</div>';
     const container = el.querySelector('.cards-container');
     if (!list.cards.length) {
-      container.innerHTML = `<div class="empty-state"><div class="empty-state-icon">◻</div><div class="empty-state-text">Drop cards here<br>or add one below</div></div>`;
+      container.innerHTML = '<div class="empty-state"><div class="empty-state-icon">\u25FB</div><div class="empty-state-text">Drop cards here<br>or add one below</div></div>';
     } else {
-      list.cards.forEach(c => container.appendChild(this.card(c)));
+      list.cards.forEach(function(c) { container.appendChild(Render.card(c)); });
     }
     return el;
   },
@@ -577,49 +649,46 @@ const Render = {
 const CardModal = (() => {
   let currentCardId = null, currentListId = null, selectedPriority = '';
 
-  const overlay   = document.getElementById('modalOverlay');
-  const titleEl   = document.getElementById('modalCardTitle');
-  const badgeEl   = document.getElementById('modalListBadge');
-  const descEl    = document.getElementById('modalDesc');
-  const dateEl    = document.getElementById('modalDate');
-  const timeEl    = document.getElementById('modalTime');
-  const prioGroup = document.getElementById('priorityGroup');
-  const remList   = document.getElementById('modalReminderList');
-  const addRemBtn = document.getElementById('addReminderBtn');
-  const smsOpt    = document.getElementById('reminderSmsOpt');
-  const smsCheck  = document.getElementById('reminderSmsCheck');
-  const smsNophone= document.getElementById('reminderSmsNophone');
+  const overlay      = document.getElementById('modalOverlay');
+  const titleEl      = document.getElementById('modalCardTitle');
+  const badgeEl      = document.getElementById('modalListBadge');
+  const descEl       = document.getElementById('modalDesc');
+  const dateEl       = document.getElementById('modalDate');
+  const timeEl       = document.getElementById('modalTime');
+  const prioGroup    = document.getElementById('priorityGroup');
+  const remList      = document.getElementById('modalReminderList');
+  const addRemBtn    = document.getElementById('addReminderBtn');
+  const smsOpt       = document.getElementById('reminderSmsOpt');
+  const smsCheck     = document.getElementById('reminderSmsCheck');
+  const smsNophone   = document.getElementById('reminderSmsNophone');
   const addPhoneLink = document.getElementById('reminderAddPhone');
 
   function open(cardId, listId) {
-    const { lists, profile } = AppState.getState();
-    const list = lists.find(l => l.id === listId);
-    const card = list?.cards.find(c => c.id === cardId);
+    const state = AppState.getState();
+    const list  = state.lists.find(function(l) { return l.id === listId; });
+    const card  = list && list.cards.find(function(c) { return c.id === cardId; });
     if (!card) return;
     currentCardId    = cardId;
     currentListId    = listId;
     selectedPriority = card.priority || '';
     titleEl.textContent = card.title;
-    badgeEl.textContent = `In: ${list.title}`;
+    badgeEl.textContent = 'In: ' + list.title;
     descEl.value        = card.description || '';
     dateEl.value        = card.dueDate     || '';
-    prioGroup.querySelectorAll('.priority-btn').forEach(b =>
-      b.classList.toggle('active', b.dataset.priority === selectedPriority)
-    );
+    prioGroup.querySelectorAll('.priority-btn').forEach(function(b) {
+      b.classList.toggle('active', b.dataset.priority === selectedPriority);
+    });
     renderReminders(card.reminders || []);
 
-    // SMS opt-in state
-    const hasPhone  = !!(profile?.phone?.trim());
-    const smsOn     = !!profile?.sms_enabled;
-    if (smsOpt)     smsOpt.style.display     = hasPhone ? '' : 'none';
-    if (smsNophone) smsNophone.style.display  = hasPhone ? 'none' : '';
-    if (smsCheck)   smsCheck.checked          = smsOn && hasPhone;
+    const profile  = state.profile;
+    const hasPhone = !!(profile && profile.phone && profile.phone.trim());
+    const smsOn    = !!(profile && profile.sms_enabled);
+    if (smsOpt)     smsOpt.style.display    = hasPhone ? '' : 'none';
+    if (smsNophone) smsNophone.style.display = hasPhone ? 'none' : '';
+    if (smsCheck)   smsCheck.checked         = smsOn && hasPhone;
 
     overlay.classList.add('open');
-    // Populate time select (12h clock, 30-min steps)
-    if (timeEl && timeEl.options.length <= 1) {
-      timeEl.innerHTML = generateTimeOptions('');
-    }
+    if (timeEl && timeEl.options.length <= 1) timeEl.innerHTML = generateTimeOptions('');
     timeEl.value = card.dueTime || '';
     titleEl.focus();
     document.body.style.overflow = 'hidden';
@@ -628,30 +697,29 @@ const CardModal = (() => {
   function renderReminders(reminders) {
     if (!remList) return;
     remList.innerHTML = '';
-    (reminders || []).forEach((r, i) => {
+    (reminders || []).forEach(function(r, i) {
       const row = document.createElement('div');
       row.className = 'reminder-row';
-      row.innerHTML = `
-        <input type="date" class="modal-date reminder-date" value="${r.date || ''}" data-ri="${i}" />
-        <select class="modal-time-select reminder-time" data-ri="${i}">
-          ${generateTimeOptions(r.time || '')}
-        </select>
-        <button class="reminder-remove" data-ri="${i}" aria-label="Remove reminder">
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M2 2l12 12M14 2L2 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        </button>`;
+      row.innerHTML =
+        '<input type="date" class="modal-date reminder-date" value="' + (r.date || '') + '" data-ri="' + i + '" />' +
+        '<select class="modal-time-select reminder-time" data-ri="' + i + '">' + generateTimeOptions(r.time || '') + '</select>' +
+        '<button class="reminder-remove" data-ri="' + i + '" aria-label="Remove reminder">' +
+          '<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M2 2l12 12M14 2L2 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>' +
+        '</button>';
       remList.appendChild(row);
     });
   }
 
   function generateTimeOptions(selectedVal) {
-    let html = `<option value="">No time</option>`;
+    let html = '<option value="">No time</option>';
     for (let h = 0; h < 24; h++) {
-      for (const m of [0, 30]) {
+      for (let mi = 0; mi < 2; mi++) {
+        const m    = mi === 0 ? 0 : 30;
         const hh   = h % 12 === 0 ? 12 : h % 12;
         const mm   = m === 0 ? '00' : '30';
         const ampm = h < 12 ? 'AM' : 'PM';
-        const val  = `${String(h).padStart(2,'0')}:${mm}`;
-        html += `<option value="${val}" ${selectedVal === val ? 'selected' : ''}>${hh}:${mm} ${ampm}</option>`;
+        const val  = (h < 10 ? '0' + h : '' + h) + ':' + mm;
+        html += '<option value="' + val + '"' + (selectedVal === val ? ' selected' : '') + '>' + hh + ':' + mm + ' ' + ampm + '</option>';
       }
     }
     return html;
@@ -659,10 +727,14 @@ const CardModal = (() => {
 
   function collectReminders() {
     if (!remList) return [];
-    return [...remList.querySelectorAll('.reminder-row')].map(row => ({
-      date: row.querySelector('.reminder-date')?.value || '',
-      time: row.querySelector('.reminder-time')?.value || '',
-    })).filter(r => r.date);
+    const rows = remList.querySelectorAll('.reminder-row');
+    const out  = [];
+    rows.forEach(function(row) {
+      const d = row.querySelector('.reminder-date');
+      const t = row.querySelector('.reminder-time');
+      if (d && d.value) out.push({ date: d.value, time: t ? t.value : '' });
+    });
+    return out;
   }
 
   function close() {
@@ -675,10 +747,11 @@ const CardModal = (() => {
     if (!currentCardId) return;
     const newTitle = titleEl.textContent.trim();
     if (!newTitle) return;
-    const cardId = currentCardId, listId = currentListId;
+    const cardId    = currentCardId;
+    const listId    = currentListId;
     const reminders = collectReminders();
-    const { profile } = AppState.getState();
-    const useSms = !!(smsCheck?.checked && profile?.phone && profile?.sms_enabled);
+    const profile   = AppState.getState().profile;
+    const useSms    = !!(smsCheck && smsCheck.checked && profile && profile.phone && profile.sms_enabled);
     const fields = {
       title:       newTitle,
       description: descEl.value.trim() || null,
@@ -687,8 +760,9 @@ const CardModal = (() => {
       priority:    selectedPriority    || null,
       reminders:   reminders,
     };
-    AppState.setState(s => {
-      const c = s.lists.find(l => l.id === listId)?.cards.find(c => c.id === cardId);
+    AppState.setState(function(s) {
+      const l = s.lists.find(function(x) { return x.id === listId; });
+      const c = l && l.cards.find(function(x) { return x.id === cardId; });
       if (c) {
         c.title       = newTitle;
         c.description = fields.description || '';
@@ -705,21 +779,18 @@ const CardModal = (() => {
       await Storage.updateCard(cardId, fields);
       UI.setSyncStatus('saved');
       if (useSms) {
-        SMS.dispatchCardReminders({
-          ...fields, title: newTitle,
-          phone: profile.phone,
-        }).catch(console.error);
+        SMS.dispatchCardReminders(Object.assign({}, fields, { title: newTitle, phone: profile.phone })).catch(console.error);
       }
-    }
-    catch (e) { console.error(e); UI.setSyncStatus('error'); }
+    } catch (e) { console.error(e); UI.setSyncStatus('error'); }
   }
 
   async function deleteCard() {
     if (!currentCardId) return;
-    const cardId = currentCardId, listId = currentListId;
-    AppState.setState(s => {
-      const l = s.lists.find(x => x.id === listId);
-      if (l) l.cards = l.cards.filter(c => c.id !== cardId);
+    const cardId = currentCardId;
+    const listId = currentListId;
+    AppState.setState(function(s) {
+      const l = s.lists.find(function(x) { return x.id === listId; });
+      if (l) l.cards = l.cards.filter(function(c) { return c.id !== cardId; });
       return s;
     });
     close();
@@ -731,51 +802,41 @@ const CardModal = (() => {
   document.getElementById('modalClose')?.addEventListener('click', close);
   document.getElementById('saveCardBtn')?.addEventListener('click', save);
   document.getElementById('deleteCardBtn')?.addEventListener('click', deleteCard);
-  overlay?.addEventListener('click', e => { if (e.target === overlay) close(); });
-  document.addEventListener('keydown', e => {
+  overlay?.addEventListener('click', function(e) { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', function(e) {
     if (!overlay?.classList.contains('open')) return;
     if (e.key === 'Escape') close();
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) save();
   });
-  prioGroup?.addEventListener('click', e => {
+  prioGroup?.addEventListener('click', function(e) {
     const btn = e.target.closest('.priority-btn');
     if (!btn) return;
     const p = btn.dataset.priority;
     selectedPriority = selectedPriority === p ? '' : p;
-    prioGroup.querySelectorAll('.priority-btn').forEach(b =>
-      b.classList.toggle('active', b.dataset.priority === selectedPriority)
-    );
+    prioGroup.querySelectorAll('.priority-btn').forEach(function(b) {
+      b.classList.toggle('active', b.dataset.priority === selectedPriority);
+    });
   });
-
-  // Add a new reminder row
-  addRemBtn?.addEventListener('click', () => {
-    const current = collectReminders();
-    current.push({ date: '', time: '' });
-    renderReminders(current);
+  addRemBtn?.addEventListener('click', function() {
+    const cur = collectReminders();
+    cur.push({ date: '', time: '' });
+    renderReminders(cur);
   });
-
-  // Remove a reminder row
-  remList?.addEventListener('click', e => {
+  remList?.addEventListener('click', function(e) {
     const btn = e.target.closest('.reminder-remove');
     if (!btn) return;
     const idx = parseInt(btn.dataset.ri, 10);
-    const current = collectReminders();
-    current.splice(idx, 1);
-    renderReminders(current);
+    const cur = collectReminders();
+    cur.splice(idx, 1);
+    renderReminders(cur);
   });
-
-  // "Add a phone number" link → open SMS setup modal
-  addPhoneLink?.addEventListener('click', e => {
+  addPhoneLink?.addEventListener('click', function(e) {
     e.preventDefault();
     close();
     SmsSetup.open();
   });
-
-  // Populate time selects with 12h options on first use
-  timeEl?.addEventListener('focus', () => {
-    if (timeEl.options.length === 0) {
-      timeEl.innerHTML = generateTimeOptions(timeEl.dataset.val || '');
-    }
+  timeEl?.addEventListener('focus', function() {
+    if (timeEl.options.length === 0) timeEl.innerHTML = generateTimeOptions('');
   });
 
   return { open, close };
@@ -801,51 +862,42 @@ const Dashboard = (() => {
   let editMode          = false;
 
   function render() {
-    const { boards, sharedBoards, searchQuery, sortOrder, tab } = AppState.getState();
+    const state = AppState.getState();
+    const tab   = state.tab;
 
-    if (tab === 'messages') {
-      UI.showMessages();
-      // MessagesView injected after module init
-      window._MessagesView?.render();
-      return;
-    }
-    if (tab === 'forum') {
-      UI.showForum();
-      window._Forum?.loadPosts(true);
-      return;
-    }
+    if (tab === 'messages') { UI.showMessages(); MessagesView.render(); return; }
+    if (tab === 'forum')    { UI.showForum();    Forum.render();        return; }
 
     UI.showDashboard();
 
-    const source   = tab === 'shared' ? (sharedBoards || []) : (boards || []);
-    let filtered   = source.filter(b => b.title.toLowerCase().includes((searchQuery || '').toLowerCase()));
+    const source   = tab === 'shared' ? (state.sharedBoards || []) : (state.boards || []);
+    const query    = (state.searchQuery || '').toLowerCase();
+    let filtered   = source.filter(function(b) { return b.title.toLowerCase().includes(query); });
 
-    filtered.sort((a, b) => {
+    filtered.sort(function(a, b) {
       const pA = !!a.is_pinned, pB = !!b.is_pinned;
       if (pA && !pB) return -1;
       if (!pA && pB) return 1;
-      if (sortOrder === 'recent')    return new Date(b.updated_at) - new Date(a.updated_at);
-      if (sortOrder === 'oldest')    return new Date(a.created_at) - new Date(b.created_at);
-      if (sortOrder === 'alpha')     return a.title.localeCompare(b.title);
-      if (sortOrder === 'alpha-rev') return b.title.localeCompare(a.title);
+      if (state.sortOrder === 'recent')    return new Date(b.updated_at) - new Date(a.updated_at);
+      if (state.sortOrder === 'oldest')    return new Date(a.created_at) - new Date(b.created_at);
+      if (state.sortOrder === 'alpha')     return a.title.localeCompare(b.title);
+      if (state.sortOrder === 'alpha-rev') return b.title.localeCompare(a.title);
       return 0;
     });
 
     const fragment = document.createDocumentFragment();
 
-    if (filtered.length === 0 && searchQuery) {
+    if (filtered.length === 0 && state.searchQuery) {
       const empty = document.createElement('div');
       empty.className = 'empty-state';
       empty.style.gridColumn = '1 / -1';
-      empty.innerHTML = `<div class="empty-state-text">No boards found matching "${searchQuery}"</div>`;
+      empty.innerHTML = '<div class="empty-state-text">No boards found matching "' + state.searchQuery + '"</div>';
       fragment.appendChild(empty);
     } else {
-      filtered.forEach(board => {
+      filtered.forEach(function(board) {
         const card = Render.boardCard(board);
-        card.addEventListener('click', e => {
-          if (e.target.closest('[data-board-delete]') ||
-              e.target.closest('[data-board-pin]')    ||
-              e.target.closest('[data-board-share]')) return;
+        card.addEventListener('click', function(e) {
+          if (e.target.closest('[data-board-delete]') || e.target.closest('[data-board-pin]') || e.target.closest('[data-board-share]')) return;
           openBoard(board.id);
         });
         fragment.appendChild(card);
@@ -854,9 +906,7 @@ const Dashboard = (() => {
 
     const addCard = document.createElement('div');
     addCard.className = 'board-card-new';
-    addCard.innerHTML = `
-      <svg width="22" height="22" viewBox="0 0 16 16" fill="none"><path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-      <span>New Board</span>`;
+    addCard.innerHTML = '<svg width="22" height="22" viewBox="0 0 16 16" fill="none"><path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>New Board</span>';
     addCard.addEventListener('click', showNewBoardModal);
     fragment.appendChild(addCard);
 
@@ -866,15 +916,15 @@ const Dashboard = (() => {
 
   async function openBoard(boardId) {
     UI.showLoading();
-    UI.setLoading('Opening board…', 40);
+    UI.setLoading('Opening board\u2026', 40);
     try {
       await sb.from('boards').update({ updated_at: new Date().toISOString() }).eq('id', boardId);
       const boardState = await Storage.initBoard(boardId);
-      AppState.setState(s => {
-        const b = s.boards.find(x => x.id === boardId);
+      AppState.setState(function(s) {
+        const b = s.boards.find(function(x) { return x.id === boardId; });
         if (b) b.updated_at = new Date().toISOString();
-        s.boards.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
-        return { ...s, view: 'board', ...boardState };
+        s.boards.sort(function(a, b) { return new Date(b.updated_at) - new Date(a.updated_at); });
+        return Object.assign({}, s, { view: 'board' }, boardState);
       }, true);
       UI.hideLoading();
       UI.showBoard();
@@ -897,9 +947,9 @@ const Dashboard = (() => {
     newBoardOverlay.classList.add('open');
     newBoardName.focus();
     selectedColor = '#C97D4E';
-    colorPicker.querySelectorAll('.color-swatch').forEach(s =>
-      s.classList.toggle('active', s.dataset.color === selectedColor)
-    );
+    colorPicker.querySelectorAll('.color-swatch').forEach(function(s) {
+      s.classList.toggle('active', s.dataset.color === selectedColor);
+    });
     document.body.style.overflow = 'hidden';
   }
 
@@ -924,15 +974,15 @@ const Dashboard = (() => {
     hideNewBoardModal();
 
     if (editMode) {
-      const { boardId } = AppState.getState();
+      const boardId = AppState.getState().boardId;
       UI.setSyncStatus('saving');
       try {
         await Storage.updateBoardTitle(boardId, title);
         await Storage.updateBoardColor(boardId, selectedColor);
-        AppState.setState(s => {
+        AppState.setState(function(s) {
           s.boardTitle = title;
           s.boardColor = selectedColor;
-          const b = s.boards.find(x => x.id === boardId);
+          const b = s.boards.find(function(x) { return x.id === boardId; });
           if (b) { b.title = title; b.color = selectedColor; b.updated_at = new Date().toISOString(); }
           return s;
         });
@@ -947,7 +997,7 @@ const Dashboard = (() => {
     try {
       const board = await Storage.createBoard(userId, title, selectedColor);
       await Storage.seedBoard(board.id);
-      AppState.setState(s => { s.boards.unshift(board); return s; });
+      AppState.setState(function(s) { s.boards.unshift(board); return s; });
       render();
       UI.setSyncStatus('saved');
       await openBoard(board.id);
@@ -956,93 +1006,93 @@ const Dashboard = (() => {
 
   async function deleteBoard(boardId) {
     if (!confirm('Delete this board and all its cards? This cannot be undone.')) return;
-    AppState.setState(s => { s.boards = s.boards.filter(b => b.id !== boardId); return s; });
+    AppState.setState(function(s) { s.boards = s.boards.filter(function(b) { return b.id !== boardId; }); return s; });
     UI.setSyncStatus('saving');
     try { await Storage.deleteBoard(boardId); UI.setSyncStatus('saved'); }
     catch (err) { console.error(err); UI.setSyncStatus('error'); }
   }
 
-  colorPicker?.addEventListener('click', e => {
+  colorPicker?.addEventListener('click', function(e) {
     const swatch = e.target.closest('.color-swatch');
     if (!swatch) return;
     selectedColor = swatch.dataset.color;
-    colorPicker.querySelectorAll('.color-swatch').forEach(s =>
-      s.classList.toggle('active', s.dataset.color === selectedColor)
-    );
+    colorPicker.querySelectorAll('.color-swatch').forEach(function(s) {
+      s.classList.toggle('active', s.dataset.color === selectedColor);
+    });
   });
 
   async function togglePin(boardId) {
-    const board = AppState.getState().boards.find(b => b.id === boardId);
+    const board = AppState.getState().boards.find(function(b) { return b.id === boardId; });
     if (!board) return;
     const newState = !board.is_pinned;
-    AppState.setState(s => { const b = s.boards.find(x => x.id === boardId); if (b) b.is_pinned = newState; return s; });
+    AppState.setState(function(s) {
+      const b = s.boards.find(function(x) { return x.id === boardId; });
+      if (b) b.is_pinned = newState;
+      return s;
+    });
     UI.setSyncStatus('saving');
     try { await Storage.updateBoardPin(boardId, newState); UI.setSyncStatus('saved'); }
     catch (err) { console.error(err); UI.setSyncStatus('error'); }
   }
 
-  grid?.addEventListener('click', e => {
+  grid?.addEventListener('click', function(e) {
     const delBtn   = e.target.closest('[data-board-delete]');
-    if (delBtn) { deleteBoard(delBtn.dataset.boardDelete); return; }
+    if (delBtn)   { deleteBoard(delBtn.dataset.boardDelete); return; }
     const pinBtn   = e.target.closest('[data-board-pin]');
-    if (pinBtn) { togglePin(pinBtn.dataset.boardPin); return; }
+    if (pinBtn)   { togglePin(pinBtn.dataset.boardPin); return; }
     const shareBtn = e.target.closest('[data-board-share]');
-    if (shareBtn) { window._BoardSharing?.open(shareBtn.dataset.boardShare); return; }
+    if (shareBtn) { BoardSharing.open(shareBtn.dataset.boardShare); return; }
   });
 
-  searchInput?.addEventListener('input', e =>
-    AppState.setState(s => { s.searchQuery = e.target.value; return s; })
-  );
-  sortSelect?.addEventListener('change', e =>
-    AppState.setState(s => { s.sortOrder = e.target.value; return s; })
-  );
+  searchInput?.addEventListener('input', function(e) {
+    AppState.setState(function(s) { s.searchQuery = e.target.value; return s; });
+  });
+  sortSelect?.addEventListener('change', function(e) {
+    AppState.setState(function(s) { s.sortOrder = e.target.value; return s; });
+  });
 
-  // Tab switching
-  document.getElementById('headerTabs')?.addEventListener('click', async e => {
+  document.getElementById('headerTabs')?.addEventListener('click', async function(e) {
     const tab = e.target.closest('.header-tab');
     if (!tab) return;
     const tabKey = tab.dataset.tab;
-
-    document.querySelectorAll('.header-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.header-tab').forEach(function(t) { t.classList.remove('active'); });
     tab.classList.add('active');
-    UI.el('dashboardTitle').textContent = tab.textContent.trim();
+    const titleEl = UI.el('dashboardTitle');
+    if (titleEl) titleEl.textContent = tab.textContent.trim();
 
     if (tabKey === 'shared') {
       const shared = await Storage.getSharedBoards();
-      AppState.setState(s => ({ ...s, tab: tabKey, sharedBoards: shared }));
+      AppState.setState(function(s) { return Object.assign({}, s, { tab: tabKey, sharedBoards: shared }); });
     } else if (tabKey === 'groups') {
-      const groups = await window._GroupsStorage?.getUserGroups() ?? [];
-      AppState.setState(s => ({ ...s, tab: tabKey, groups }));
-      window._GroupsView?.render();
+      const groups = await Storage.getUserGroups();
+      AppState.setState(function(s) { return Object.assign({}, s, { tab: tabKey, groups: groups }); });
+      GroupsView.render();
       UI.el('groupsOverlay')?.classList.add('open');
     } else if (tabKey === 'messages') {
-      const groups = await window._GroupsStorage?.getUserGroups() ?? [];
-      AppState.setState(s => ({ ...s, tab: tabKey, groups }));
-      window._MessagesView?.init();
-    } else if (tabKey === 'forum') {
-      AppState.setState(s => ({ ...s, tab: tabKey }));
+      const groups = await Storage.getUserGroups();
+      AppState.setState(function(s) { return Object.assign({}, s, { tab: tabKey, groups: groups }); });
+      MessagesView.init();
     } else {
-      AppState.setState(s => ({ ...s, tab: tabKey }));
+      AppState.setState(function(s) { return Object.assign({}, s, { tab: tabKey }); });
     }
   });
 
   newBoardBtn?.addEventListener('click', showNewBoardModal);
   document.getElementById('boardSettingsBtn')?.addEventListener('click', showEditBoardModal);
-  document.getElementById('shareBoardFromBoardBtn')?.addEventListener('click', () => {
-    const { boardId } = AppState.getState();
-    if (boardId) window._BoardSharing?.open(boardId);
+  document.getElementById('shareBoardFromBoardBtn')?.addEventListener('click', function() {
+    const boardId = AppState.getState().boardId;
+    if (boardId) BoardSharing.open(boardId);
   });
-
   newBoardClose?.addEventListener('click', hideNewBoardModal);
   newBoardCancel?.addEventListener('click', hideNewBoardModal);
   createBoardBtn?.addEventListener('click', handleBoardSubmit);
-  newBoardOverlay?.addEventListener('click', e => { if (e.target === newBoardOverlay) hideNewBoardModal(); });
-  newBoardName?.addEventListener('keydown', e => {
+  newBoardOverlay?.addEventListener('click', function(e) { if (e.target === newBoardOverlay) hideNewBoardModal(); });
+  newBoardName?.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') handleBoardSubmit();
     if (e.key === 'Escape') hideNewBoardModal();
   });
 
-  AppState.subscribe(state => {
+  AppState.subscribe(function(state) {
     if (state.view === 'dashboard' || state.view === 'messages' || state.view === 'forum') render();
   });
 
@@ -1050,14 +1100,455 @@ const Dashboard = (() => {
 })();
 
 /* ═══════════════════════════════════════════════════════════
+   MESSAGES VIEW
+   (in-app group chat — separate from SMS phone reminders)
+   ═══════════════════════════════════════════════════════════ */
+
+const MessagesView = (() => {
+  let activeGroupId = null;
+  let subscription  = null;
+
+  function init() {
+    const sendBtn = UI.el('sendMessageBtn');
+    const input   = UI.el('messageInput');
+    if (sendBtn) {
+      sendBtn.onclick = async function() {
+        const content = input ? input.value.trim() : '';
+        if (!content || !activeGroupId) return;
+        if (input) input.value = '';
+        try { await Storage.sendMessage(activeGroupId, content); }
+        catch (err) { console.error('Send message error:', err); }
+      };
+    }
+    if (input) {
+      input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (sendBtn) sendBtn.click(); }
+      });
+    }
+    const createBtn = UI.el('createGroupFromMessagesBtn');
+    if (createBtn) {
+      createBtn.onclick = function() { UI.el('createGroupOverlay')?.classList.add('open'); };
+    }
+  }
+
+  async function selectGroup(groupId, groupName) {
+    activeGroupId = groupId;
+    const titleEl = UI.el('messagesGroupTitle');
+    const areaEl  = UI.el('messagesInputArea');
+    const feedEl  = UI.el('messagesFeed');
+    if (titleEl) titleEl.textContent = groupName;
+    if (areaEl)  areaEl.style.display = 'flex';
+    if (feedEl)  feedEl.innerHTML = '<p class="loading-text">Loading messages\u2026</p>';
+    const msgs = await Storage.getGroupMessages(groupId);
+    renderMessages(msgs.reverse());
+    if (subscription) subscription.unsubscribe();
+    subscription = Storage.subscribeToMessages(groupId, async function() {
+      const updated = await Storage.getGroupMessages(groupId);
+      renderMessages(updated.reverse());
+    });
+  }
+
+  function renderMessages(msgs) {
+    const feed  = UI.el('messagesFeed');
+    if (!feed) return;
+    const state = AppState.getState();
+    const myId  = (state.profile && state.profile.id) || Auth.getUserId();
+    feed.innerHTML = msgs.map(function(m) {
+      const isMe    = m.sender_id === myId;
+      const initial = (m.sender_name || '?').charAt(0).toUpperCase();
+      return '<div class="message ' + (isMe ? 'message-mine' : '') + '">' +
+        (!isMe ? '<div class="message-avatar" title="' + Render.esc(m.sender_name || '') + '">' + Render.esc(initial) + '</div>' : '') +
+        '<div class="message-bubble-wrap">' +
+          (!isMe ? '<div class="message-meta">' + Render.esc(m.sender_name || 'Unknown') + '</div>' : '') +
+          '<div class="message-bubble">' + Render.esc(m.content) + '</div>' +
+          '<div class="message-time">' + new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '</div>' +
+        '</div>' +
+        (isMe ? '<div class="message-avatar message-avatar-mine" title="You">' + Render.esc(initial) + '</div>' : '') +
+        '</div>';
+    }).join('');
+    feed.scrollTop = feed.scrollHeight;
+  }
+
+  function render() {
+    const groups = AppState.getState().groups || [];
+    const list   = UI.el('messageGroupsList');
+    if (!list) return;
+    list.innerHTML = groups.map(function(g) {
+      return '<button class="message-group-btn ' + (activeGroupId === g.id ? 'active' : '') + '" data-id="' + g.id + '" data-name="' + Render.esc(g.name) + '">' +
+        '<span class="msg-group-avatar">' + Render.esc((g.name || '?').charAt(0).toUpperCase()) + '</span>' +
+        '<span>' + Render.esc(g.name) + '</span>' +
+        '</button>';
+    }).join('');
+    list.querySelectorAll('.message-group-btn').forEach(function(btn) {
+      btn.onclick = function() { selectGroup(btn.dataset.id, btn.dataset.name); };
+    });
+  }
+
+  return { init, render };
+})();
+
+/* ═══════════════════════════════════════════════════════════
+   BOARD SHARING MODAL
+   Accepts email OR friend-code (profile UUID)
+   ═══════════════════════════════════════════════════════════ */
+
+const BoardSharing = (() => {
+  const overlay    = UI.el('shareBoardOverlay');
+  const identInput = UI.el('shareIdentifier');
+  const permIn     = UI.el('sharePermission');
+  const shareList  = UI.el('shareList');
+  const errorEl    = UI.el('shareBoardError');
+  let activeBoardId = null;
+
+  function setError(msg) {
+    if (!errorEl) return;
+    errorEl.textContent   = msg;
+    errorEl.style.display = msg ? '' : 'none';
+  }
+
+  async function open(boardId) {
+    activeBoardId = boardId;
+    setError('');
+    if (identInput) identInput.value = '';
+    if (overlay) overlay.classList.add('open');
+    if (identInput) identInput.focus();
+    await loadShares();
+  }
+
+  async function loadShares() {
+    if (!shareList) return;
+    shareList.innerHTML = '<div style="font-size:0.82rem;color:var(--ink-soft);padding:8px 0;">Loading\u2026</div>';
+    try {
+      const shares = await Storage.getBoardShares(activeBoardId);
+      if (!shares || shares.length === 0) {
+        shareList.innerHTML = '<div style="font-size:0.82rem;color:var(--ink-soft);padding:8px 0;">Not shared with anyone yet.</div>';
+        return;
+      }
+      shareList.innerHTML = shares.map(function(s) {
+        return '<div class="share-item">' +
+          '<div>' +
+            '<div class="share-item-email">' + Render.esc(s.display_name || s.email || 'Unknown') + '</div>' +
+            '<div class="share-item-perm">' + Render.esc(s.email || '') + ' \u00b7 ' + s.permission_level + '</div>' +
+          '</div>' +
+          '<button class="share-item-remove" data-share-id="' + s.id + '" title="Remove access">\u2715</button>' +
+          '</div>';
+      }).join('');
+      shareList.querySelectorAll('[data-share-id]').forEach(function(btn) {
+        btn.onclick = async function() {
+          btn.textContent = '\u2026';
+          try { await Storage.removeShare(btn.dataset.shareId); await loadShares(); }
+          catch (err) { setError(err.message); btn.textContent = '\u2715'; }
+        };
+      });
+    } catch (err) {
+      shareList.innerHTML = '<div style="font-size:0.82rem;color:var(--red);padding:8px 0;">' + Render.esc(err.message) + '</div>';
+    }
+  }
+
+  UI.el('shareBoardBtn')?.addEventListener('click', async function() {
+    const identifier = identInput ? identInput.value.trim() : '';
+    if (!identifier) { if (identInput) identInput.focus(); return; }
+    setError('');
+    const btn = UI.el('shareBoardBtn');
+    btn.textContent = '\u2026';
+    btn.disabled = true;
+    try {
+      await Storage.shareBoard(activeBoardId, identifier, permIn ? permIn.value : 'view');
+      if (identInput) identInput.value = '';
+      await loadShares();
+      btn.textContent = 'Share';
+    } catch (err) {
+      setError(err.message || 'Could not share \u2014 check the email or friend code.');
+      btn.textContent = 'Share';
+    }
+    btn.disabled = false;
+  });
+
+  UI.el('shareBoardClose')?.addEventListener('click', function() { if (overlay) overlay.classList.remove('open'); });
+  overlay?.addEventListener('click', function(e) { if (e.target === overlay) overlay.classList.remove('open'); });
+  identInput?.addEventListener('keydown', function(e) { if (e.key === 'Enter') UI.el('shareBoardBtn')?.click(); });
+
+  return { open };
+})();
+window.BoardSharing = BoardSharing;
+
+/* ═══════════════════════════════════════════════════════════
+   GROUPS VIEW
+   ═══════════════════════════════════════════════════════════ */
+
+const GroupsView = (() => {
+  function render() {
+    const groups = AppState.getState().groups || [];
+    const list   = UI.el('groupsList');
+    if (!list) return;
+
+    if (!groups.length) {
+      list.innerHTML = '<div class="empty-state"><div class="empty-state-text">No groups yet.<br>Create one to collaborate with others.</div></div>';
+      return;
+    }
+
+    list.innerHTML = groups.map(function(g) {
+      return '<div class="group-item" data-group-id="' + g.id + '">' +
+        '<div class="group-item-header">' +
+          '<div>' +
+            '<div class="share-item-email" style="font-weight:600;">' + Render.esc(g.name) + '</div>' +
+            '<div class="share-item-perm">' + (g.description ? Render.esc(g.description) + ' \u00b7 ' : '') + g.role + '</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:6px;">' +
+            '<button class="btn-ghost" style="font-size:12px;" data-group-add-member="' + g.id + '" data-group-name="' + Render.esc(g.name) + '">+ Member</button>' +
+            '<button class="btn-ghost" style="font-size:12px;" data-group-show-members="' + g.id + '">Members \u25be</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="group-members-list" id="members-' + g.id + '" style="display:none;margin-top:8px;padding:8px;background:var(--canvas);border-radius:var(--radius-sm);"></div>' +
+        '</div>';
+    }).join('');
+
+    list.querySelectorAll('[data-group-add-member]').forEach(function(btn) {
+      btn.addEventListener('click', function() { openAddMemberModal(btn.dataset.groupAddMember, btn.dataset.groupName); });
+    });
+    list.querySelectorAll('[data-group-show-members]').forEach(function(btn) {
+      btn.addEventListener('click', function() { toggleMembers(btn.dataset.groupShowMembers, btn); });
+    });
+  }
+
+  async function toggleMembers(groupId, btn) {
+    const panel = UI.el('members-' + groupId);
+    if (!panel) return;
+    if (panel.style.display !== 'none') {
+      panel.style.display = 'none';
+      btn.textContent = 'Members \u25be';
+      return;
+    }
+    panel.style.display = 'block';
+    btn.textContent = 'Members \u25b4';
+    panel.innerHTML = '<div style="font-size:0.8rem;color:var(--ink-soft);">Loading\u2026</div>';
+    try {
+      const members = await Storage.getGroupMembers(groupId);
+      if (!members || members.length === 0) {
+        panel.innerHTML = '<div style="font-size:0.8rem;color:var(--ink-soft);">No members yet.</div>';
+        return;
+      }
+      panel.innerHTML = members.map(function(m) {
+        const label = m.display_name || m.email || '?';
+        return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--ink-faint);">' +
+          '<div style="width:26px;height:26px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:0.75rem;color:#fff;font-weight:600;">' +
+            label.charAt(0).toUpperCase() +
+          '</div>' +
+          '<div>' +
+            '<div style="font-size:0.83rem;font-weight:500;">' + Render.esc(label) + '</div>' +
+            '<div style="font-size:0.73rem;color:var(--ink-soft);">' + Render.esc(m.email || '') + ' \u00b7 ' + m.role + '</div>' +
+          '</div>' +
+          '</div>';
+      }).join('');
+    } catch (err) {
+      panel.innerHTML = '<div style="font-size:0.8rem;color:var(--red);">Error: ' + Render.esc(err.message) + '</div>';
+    }
+  }
+
+  function openAddMemberModal(groupId, groupName) {
+    const overlay = UI.el('addMemberOverlay');
+    if (!overlay) {
+      const val = prompt('Add a member to "' + groupName + '" by email or friend code:');
+      if (!val || !val.trim()) return;
+      Storage.addGroupMember(groupId, val.trim())
+        .then(function() { alert('Member added!'); })
+        .catch(function(err) { alert('Error: ' + (err.message || err)); });
+      return;
+    }
+    const nameEl = UI.el('addMemberGroupName');
+    if (nameEl) nameEl.textContent = groupName || '';
+    overlay.dataset.groupId = groupId;
+    const inputEl = UI.el('addMemberInput');
+    if (inputEl) inputEl.value = '';
+    const errEl = UI.el('addMemberError');
+    if (errEl) errEl.textContent = '';
+    overlay.classList.add('open');
+    if (inputEl) inputEl.focus();
+  }
+
+  UI.el('confirmAddMemberBtn')?.addEventListener('click', async function() {
+    const overlay    = UI.el('addMemberOverlay');
+    const groupId    = overlay ? overlay.dataset.groupId : null;
+    const inputEl    = UI.el('addMemberInput');
+    const identifier = inputEl ? inputEl.value.trim() : '';
+    if (!identifier) { if (inputEl) inputEl.focus(); return; }
+    const btn = UI.el('confirmAddMemberBtn');
+    btn.textContent = '\u2026';
+    try {
+      await Storage.addGroupMember(groupId, identifier);
+      if (overlay) overlay.classList.remove('open');
+      btn.textContent = 'Add';
+      const panel  = UI.el('members-' + groupId);
+      const toggle = document.querySelector('[data-group-show-members="' + groupId + '"]');
+      if (panel && panel.style.display !== 'none' && toggle) toggleMembers(groupId, toggle);
+    } catch (err) {
+      const errEl = UI.el('addMemberError');
+      if (errEl) errEl.textContent = err.message || 'Could not add member.';
+      btn.textContent = 'Add';
+    }
+  });
+
+  document.getElementById('addMemberOverlay')?.addEventListener('click', function(e) {
+    if (e.target === UI.el('addMemberOverlay')) UI.el('addMemberOverlay')?.classList.remove('open');
+  });
+  document.getElementById('cancelAddMemberBtn')?.addEventListener('click',  function() { UI.el('addMemberOverlay')?.classList.remove('open'); });
+  document.getElementById('cancelAddMemberBtn2')?.addEventListener('click', function() { UI.el('addMemberOverlay')?.classList.remove('open'); });
+
+  document.getElementById('createGroupBtn')?.addEventListener('click', function() {
+    UI.el('groupsOverlay')?.classList.remove('open');
+    UI.el('createGroupOverlay')?.classList.add('open');
+  });
+
+  document.getElementById('confirmCreateGroupBtn')?.addEventListener('click', async function() {
+    const nameEl = UI.el('groupName');
+    const descEl = UI.el('groupDescription');
+    const name   = nameEl ? nameEl.value.trim() : '';
+    const desc   = (descEl && descEl.value.trim()) || null;
+    if (!name) { if (nameEl) nameEl.focus(); return; }
+    const btn = UI.el('confirmCreateGroupBtn');
+    btn.textContent = '\u2026';
+    try {
+      await Storage.createGroup(name, desc);
+      const groups = await Storage.getUserGroups();
+      AppState.setState(function(s) { return Object.assign({}, s, { groups: groups }); });
+      UI.el('createGroupOverlay')?.classList.remove('open');
+      UI.el('groupsOverlay')?.classList.add('open');
+      if (nameEl) nameEl.value = '';
+      if (descEl) descEl.value = '';
+      btn.textContent = 'Create';
+      render();
+    } catch (err) {
+      console.error(err);
+      btn.textContent = 'Error';
+      setTimeout(function() { btn.textContent = 'Create'; }, 1800);
+    }
+  });
+
+  document.getElementById('groupsClose')?.addEventListener('click',          function() { UI.el('groupsOverlay')?.classList.remove('open'); });
+  document.getElementById('createGroupClose')?.addEventListener('click',     function() { UI.el('createGroupOverlay')?.classList.remove('open'); });
+  document.getElementById('createGroupCancelBtn')?.addEventListener('click', function() { UI.el('createGroupOverlay')?.classList.remove('open'); });
+  document.getElementById('groupsOverlay')?.addEventListener('click', function(e) {
+    if (e.target === UI.el('groupsOverlay')) UI.el('groupsOverlay').classList.remove('open');
+  });
+  document.getElementById('createGroupOverlay')?.addEventListener('click', function(e) {
+    if (e.target === UI.el('createGroupOverlay')) UI.el('createGroupOverlay').classList.remove('open');
+  });
+
+  return { render, openAddMemberModal };
+})();
+window.GroupsView = GroupsView;
+
+/* ═══════════════════════════════════════════════════════════
+   FORUM  (public community feed)
+   ═══════════════════════════════════════════════════════════ */
+
+const Forum = (() => {
+  let currentPage = 0;
+  const PAGE_SIZE = 20;
+  let wired       = false;
+
+  async function loadPosts(reset) {
+    if (reset) currentPage = 0;
+    const feed = UI.el('forumFeed');
+    if (!feed) return;
+    if (reset) feed.innerHTML = '<p class="loading-text">Loading\u2026</p>';
+
+    try {
+      const posts = await Storage.getForumPosts(currentPage, PAGE_SIZE);
+      if (reset) feed.innerHTML = '';
+
+      if (!posts || posts.length === 0) {
+        if (reset) feed.innerHTML = '<p class="loading-text" style="opacity:.5;">No posts yet \u2014 be the first!</p>';
+        const lb = UI.el('forumLoadMore');
+        if (lb) lb.style.display = 'none';
+        return;
+      }
+
+      posts.forEach(function(post) {
+        const el      = document.createElement('div');
+        el.className  = 'forum-post';
+        const name    = (post.profiles && post.profiles.display_name) || 'Anonymous';
+        const initial = name.charAt(0).toUpperCase();
+        const color   = (post.profiles && post.profiles.avatar_color) || 'var(--accent)';
+        const ts      = new Date(post.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        el.innerHTML =
+          '<div class="forum-post-avatar" style="background:' + color + ';">' + Render.esc(initial) + '</div>' +
+          '<div class="forum-post-body">' +
+            '<div class="forum-post-meta">' +
+              '<span class="forum-post-name">' + Render.esc(name) + '</span>' +
+              '<span class="forum-post-time">' + ts + '</span>' +
+            '</div>' +
+            '<div class="forum-post-content">' + Render.esc(post.content) + '</div>' +
+          '</div>';
+        feed.appendChild(el);
+      });
+
+      currentPage++;
+      const lb = UI.el('forumLoadMore');
+      if (lb) lb.style.display = posts.length < PAGE_SIZE ? 'none' : '';
+    } catch (err) {
+      if (reset) feed.innerHTML = '<p class="loading-text" style="color:var(--red);">Error loading posts.</p>';
+      console.error('Forum load error:', err);
+    }
+  }
+
+  async function submitPost() {
+    const input   = UI.el('forumInput');
+    const content = input ? input.value.trim() : '';
+    if (!content) { if (input) input.focus(); return; }
+    const btn = UI.el('forumSubmitBtn');
+    if (btn) { btn.textContent = '\u2026'; btn.disabled = true; }
+    try {
+      const state = AppState.getState();
+      const uid   = (state.profile && state.profile.id) || Auth.getUserId();
+      await Storage.createForumPost(content, uid);
+      if (input) input.value = '';
+      const countEl = UI.el('forumCharCount');
+      if (countEl) countEl.textContent = '';
+      await loadPosts(true);
+    } catch (err) {
+      console.error('Forum post error:', err);
+    }
+    if (btn) { btn.textContent = 'Post'; btn.disabled = false; }
+  }
+
+  function render() {
+    if (!wired) {
+      UI.el('forumSubmitBtn')?.addEventListener('click', submitPost);
+      UI.el('forumInput')?.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) submitPost();
+      });
+      UI.el('forumInput')?.addEventListener('input', function() {
+        const len     = UI.el('forumInput') ? UI.el('forumInput').value.length : 0;
+        const countEl = UI.el('forumCharCount');
+        if (countEl) {
+          countEl.textContent = len > 0 ? len + '/1000' : '';
+          countEl.style.color = len > 900 ? 'var(--red)' : '';
+        }
+      });
+      UI.el('forumLoadMore')?.addEventListener('click', function() { loadPosts(false); });
+      sb.channel('forum_feed')
+        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'forum_posts' }, function() {
+          if (AppState.getState().tab === 'forum') loadPosts(true);
+        })
+        .subscribe();
+      wired = true;
+    }
+    loadPosts(true);
+  }
+
+  return { render };
+})();
+
+/* ═══════════════════════════════════════════════════════════
    BOARD
    ═══════════════════════════════════════════════════════════ */
 
 const Board = (() => {
-  const boardScroll   = document.getElementById('boardScroll');
-  const addListBtn    = document.getElementById('addListBtn');
-  const addListGhost  = document.getElementById('addListGhost');
-  const boardTitleEl  = document.getElementById('boardTitle');
+  const boardScroll  = document.getElementById('boardScroll');
+  const addListBtn   = document.getElementById('addListBtn');
+  const addListGhost = document.getElementById('addListGhost');
+  const boardTitleEl = document.getElementById('boardTitle');
 
   let activeAddCardListId = null;
   let activeAddListForm   = null;
@@ -1065,24 +1556,15 @@ const Board = (() => {
 
   function render() {
     const state = AppState.getState();
-
-    // Update header title
-    if (document.activeElement !== boardTitleEl) {
-      boardTitleEl.textContent = state.boardTitle;
-    }
-
-    // Set accent color from board color
+    if (document.activeElement !== boardTitleEl) boardTitleEl.textContent = state.boardTitle;
     document.documentElement.style.setProperty('--accent', state.boardColor || '#C97D4E');
-
-    boardScroll.querySelectorAll('.list, .add-list-form').forEach(el => el.remove());
-    state.lists.forEach(list => boardScroll.insertBefore(Render.list(list), addListGhost));
+    boardScroll.querySelectorAll('.list, .add-list-form').forEach(function(el) { el.remove(); });
+    state.lists.forEach(function(list) { boardScroll.insertBefore(Render.list(list), addListGhost); });
     attachDragListeners();
   }
 
-  /* ── Drag ── */
-
   function attachDragListeners() {
-    boardScroll.querySelectorAll('.card').forEach(cardEl => {
+    boardScroll.querySelectorAll('.card').forEach(function(cardEl) {
       cardEl.addEventListener('mousedown', onCardMouseDown);
       cardEl.addEventListener('touchstart', onCardTouchStart, { passive: true });
     });
@@ -1092,22 +1574,22 @@ const Board = (() => {
     if (e.button !== 0 || e.target.closest('[contenteditable]')) return;
     const cardEl = e.currentTarget;
     const cardId = cardEl.dataset.cardId;
-    const listId = cardEl.closest('.list')?.dataset.listId;
+    const listEl = cardEl.closest('.list');
+    const listId = listEl ? listEl.dataset.listId : null;
     let dragging = false;
     const sx = e.clientX, sy = e.clientY;
-
-    const onMove = me => {
+    function onMove(me) {
       if (!dragging && (Math.abs(me.clientX-sx)>5||Math.abs(me.clientY-sy)>5)) { dragging=true; DragEngine.start(cardEl,cardId,listId); }
       if (dragging) DragEngine.move(me.clientX,me.clientY);
-    };
-    const onUp = async me => {
+    }
+    async function onUp(me) {
       document.removeEventListener('mousemove',onMove);
       document.removeEventListener('mouseup',onUp);
       if (!dragging) { CardModal.open(cardId,listId); return; }
       const drop = getDropTarget(me.clientX,me.clientY);
       if (drop) await handleDrop(DragEngine.end(drop.listId,drop.index));
       else { DragEngine.cancel(); render(); }
-    };
+    }
     document.addEventListener('mousemove',onMove);
     document.addEventListener('mouseup',onUp);
   }
@@ -1115,230 +1597,256 @@ const Board = (() => {
   function onCardTouchStart(e) {
     const cardEl = e.currentTarget;
     const cardId = cardEl.dataset.cardId;
-    const listId = cardEl.closest('.list')?.dataset.listId;
+    const listEl = cardEl.closest('.list');
+    const listId = listEl ? listEl.dataset.listId : null;
     const t0 = e.touches[0]; let dragging = false;
     const sx = t0.clientX, sy = t0.clientY;
-    const onMove = te => {
+    function onMove(te) {
       const t = te.touches[0];
       if (!dragging&&(Math.abs(t.clientX-sx)>8||Math.abs(t.clientY-sy)>8)){dragging=true;DragEngine.start(cardEl,cardId,listId);}
       if (dragging){te.preventDefault();DragEngine.move(t.clientX,t.clientY);}
-    };
-    const onEnd = async te => {
+    }
+    async function onEnd(te) {
       document.removeEventListener('touchmove',onMove);
       document.removeEventListener('touchend',onEnd);
       if (!dragging){CardModal.open(cardId,listId);return;}
       const t=te.changedTouches[0]; const drop=getDropTarget(t.clientX,t.clientY);
       if (drop) await handleDrop(DragEngine.end(drop.listId,drop.index));
       else{DragEngine.cancel();render();}
-    };
+    }
     document.addEventListener('touchmove',onMove,{passive:false});
     document.addEventListener('touchend',onEnd);
   }
 
-  async function handleDrop({ cardId, sourceListId, targetListId, targetIndex }) {
-    const state = AppState.getState();
-    const srcCards = state.lists.find(l=>l.id===sourceListId)?.cards;
-    const cardIdx  = srcCards?.findIndex(c=>c.id===cardId);
-    if (cardIdx===undefined||cardIdx===-1){render();return;}
-
-    AppState.setState(s => {
-      const src=s.lists.find(l=>l.id===sourceListId), dest=s.lists.find(l=>l.id===targetListId);
-      const [card]=src.cards.splice(cardIdx,1);
-      dest.cards.splice(targetIndex??dest.cards.length,0,card);
+  async function handleDrop(result) {
+    const cardId = result.cardId, sourceListId = result.sourceListId, targetListId = result.targetListId, targetIndex = result.targetIndex;
+    const state    = AppState.getState();
+    const srcCards = state.lists.find(function(l){return l.id===sourceListId;})?.cards;
+    const cardIdx  = srcCards ? srcCards.findIndex(function(c){return c.id===cardId;}) : -1;
+    if (cardIdx===-1){render();return;}
+    AppState.setState(function(s) {
+      const src=s.lists.find(function(l){return l.id===sourceListId;});
+      const dest=s.lists.find(function(l){return l.id===targetListId;});
+      const card=src.cards.splice(cardIdx,1)[0];
+      dest.cards.splice(targetIndex!=null?targetIndex:dest.cards.length,0,card);
       return s;
     });
-
     UI.setSyncStatus('saving');
     try {
-      const ns=AppState.getState();
-      const destList=ns.lists.find(l=>l.id===targetListId);
-      const newPos=destList.cards.findIndex(c=>c.id===cardId);
+      const ns       = AppState.getState();
+      const destList = ns.lists.find(function(l){return l.id===targetListId;});
+      const newPos   = destList.cards.findIndex(function(c){return c.id===cardId;});
       await Storage.moveCard(cardId,targetListId,newPos,state.boardId);
       await Storage.reorderCards(destList.cards);
-      if (sourceListId!==targetListId) await Storage.reorderCards(ns.lists.find(l=>l.id===sourceListId).cards);
+      if (sourceListId!==targetListId) await Storage.reorderCards(ns.lists.find(function(l){return l.id===sourceListId;}).cards);
       UI.setSyncStatus('saved');
     } catch(err){console.error(err);UI.setSyncStatus('error');}
   }
 
   function getDropTarget(cx, cy) {
-    for (const container of boardScroll.querySelectorAll('.cards-container')) {
-      const r=container.getBoundingClientRect();
+    const containers = boardScroll.querySelectorAll('.cards-container');
+    for (let i = 0; i < containers.length; i++) {
+      const container = containers[i];
+      const r = container.getBoundingClientRect();
       if (cx>=r.left&&cx<=r.right&&cy>=r.top&&cy<=r.bottom) {
-        const listId=container.dataset.listId;
-        const cards=[...container.querySelectorAll('.card:not(.dragging)')];
-        let index=cards.length;
-        for(let i=0;i<cards.length;i++){const cr=cards[i].getBoundingClientRect();if(cy<cr.top+cr.height/2){index=i;break;}}
-        return{listId,index};
+        const listId = container.dataset.listId;
+        const cards  = Array.from(container.querySelectorAll('.card:not(.dragging)'));
+        let index    = cards.length;
+        for (let j=0;j<cards.length;j++){const cr=cards[j].getBoundingClientRect();if(cy<cr.top+cr.height/2){index=j;break;}}
+        return { listId: listId, index: index };
       }
     }
     return null;
   }
 
-  /* ── Add Card ── */
-
   function showAddCardForm(listId) {
     if (activeAddCardListId===listId) return;
     hideAddCardForm();
-    const listEl=boardScroll.querySelector(`.list[data-list-id="${listId}"]`);
+    const listEl = boardScroll.querySelector('.list[data-list-id="' + listId + '"]');
     if (!listEl) return;
-    const footer=listEl.querySelector('.list-footer');
-    const addBtn=listEl.querySelector('.add-card-btn');
-    const form=document.getElementById('addCardFormTemplate').content.cloneNode(true).querySelector('.add-card-form');
-    const input=form.querySelector('.add-card-input');
-    const confirm=form.querySelector('.btn-confirm');
-    const cancel=form.querySelector('.btn-cancel-form');
-    addBtn.style.display='none';
-    footer.insertBefore(form,footer.firstChild);
+    const footer  = listEl.querySelector('.list-footer');
+    const addBtn  = listEl.querySelector('.add-card-btn');
+    const tmpl    = document.getElementById('addCardFormTemplate');
+    const form    = tmpl.content.cloneNode(true).querySelector('.add-card-form');
+    const input   = form.querySelector('.add-card-input');
+    const confirm = form.querySelector('.btn-confirm');
+    const cancel  = form.querySelector('.btn-cancel-form');
+    addBtn.style.display = 'none';
+    footer.insertBefore(form, footer.firstChild);
     input.focus();
-    activeAddCardListId=listId;
-
-    const doAdd=async()=>{
-      const title=input.value.trim();
+    activeAddCardListId = listId;
+    async function doAdd() {
+      const title = input.value.trim();
       hideAddCardForm();
-      if(!title)return;
-      const state=AppState.getState();
-      const pos=state.lists.find(l=>l.id===listId)?.cards.length??0;
+      if (!title) return;
+      const state = AppState.getState();
+      const pos   = (state.lists.find(function(l){return l.id===listId;}) || {cards:[]}).cards.length;
       UI.setSyncStatus('saving');
-      try{
-        const c=await Storage.createCard(state.boardId,listId,title,pos);
-        AppState.setState(s=>{const l=s.lists.find(x=>x.id===listId);if(l)l.cards.push({id:c.id,title:c.title,description:'',dueDate:'',dueTime:'',priority:'',phone:'',reminders:[],position:c.position});return s;});
+      try {
+        const c = await Storage.createCard(state.boardId, listId, title, pos);
+        AppState.setState(function(s) {
+          const l = s.lists.find(function(x){return x.id===listId;});
+          if (l) l.cards.push({ id:c.id, title:c.title, description:'', dueDate:'', dueTime:'', priority:'', phone:'', reminders:[], position:c.position });
+          return s;
+        });
         UI.setSyncStatus('saved');
-      }catch(err){console.error(err);UI.setSyncStatus('error');}
-    };
-    confirm.addEventListener('click',doAdd);
-    cancel.addEventListener('click',hideAddCardForm);
-    input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();doAdd();}if(e.key==='Escape')hideAddCardForm();});
+      } catch(err) { console.error(err); UI.setSyncStatus('error'); }
+    }
+    confirm.addEventListener('click', doAdd);
+    cancel.addEventListener('click', hideAddCardForm);
+    input.addEventListener('keydown', function(e) {
+      if (e.key==='Enter'&&!e.shiftKey){e.preventDefault();doAdd();}
+      if (e.key==='Escape') hideAddCardForm();
+    });
   }
 
   function hideAddCardForm() {
     if (!activeAddCardListId) return;
-    const listEl=boardScroll.querySelector(`.list[data-list-id="${activeAddCardListId}"]`);
-    if (listEl){listEl.querySelector('.add-card-form')?.remove();const b=listEl.querySelector('.add-card-btn');if(b)b.style.display='';}
-    activeAddCardListId=null;
+    const listEl = boardScroll.querySelector('.list[data-list-id="' + activeAddCardListId + '"]');
+    if (listEl) {
+      const f = listEl.querySelector('.add-card-form');
+      if (f) f.remove();
+      const b = listEl.querySelector('.add-card-btn');
+      if (b) b.style.display = '';
+    }
+    activeAddCardListId = null;
   }
-
-  /* ── Add List ── */
 
   function showAddListForm() {
     if (activeAddListForm) return;
-    const form=document.createElement('div');
-    form.className='add-list-form';
-    form.innerHTML=`<input class="add-list-input" type="text" placeholder="List title…" maxlength="60" /><div class="add-list-actions"><button class="btn-confirm">Add List</button><button class="btn-cancel-form"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 2l12 12M14 2L2 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>`;
-    const input=form.querySelector('.add-list-input');
-    const confirm=form.querySelector('.btn-confirm');
-    const cancel=form.querySelector('.btn-cancel-form');
-    boardScroll.insertBefore(form,addListGhost);
+    const form    = document.createElement('div');
+    form.className = 'add-list-form';
+    form.innerHTML = '<input class="add-list-input" type="text" placeholder="List title\u2026" maxlength="60" />' +
+      '<div class="add-list-actions"><button class="btn-confirm">Add List</button>' +
+      '<button class="btn-cancel-form"><svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 2l12 12M14 2L2 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button></div>';
+    const input   = form.querySelector('.add-list-input');
+    const confirm = form.querySelector('.btn-confirm');
+    const cancel  = form.querySelector('.btn-cancel-form');
+    boardScroll.insertBefore(form, addListGhost);
     input.focus();
-    activeAddListForm=form;
-
-    const doAdd=async()=>{
-      const title=input.value.trim();
+    activeAddListForm = form;
+    async function doAdd() {
+      const title = input.value.trim();
       hideAddListForm();
-      if(!title)return;
-      const state=AppState.getState();
+      if (!title) return;
+      const state = AppState.getState();
       UI.setSyncStatus('saving');
-      try{
-        const l=await Storage.createList(state.boardId,title,state.lists.length);
-        AppState.setState(s=>{s.lists.push({id:l.id,title:l.title,position:l.position,cards:[]});return s;});
+      try {
+        const l = await Storage.createList(state.boardId, title, state.lists.length);
+        AppState.setState(function(s) { s.lists.push({ id:l.id, title:l.title, position:l.position, cards:[] }); return s; });
         UI.setSyncStatus('saved');
-      }catch(err){console.error(err);UI.setSyncStatus('error');}
-    };
-    confirm.addEventListener('click',doAdd);
-    cancel.addEventListener('click',hideAddListForm);
-    input.addEventListener('keydown',e=>{if(e.key==='Enter')doAdd();if(e.key==='Escape')hideAddListForm();});
+      } catch(err) { console.error(err); UI.setSyncStatus('error'); }
+    }
+    confirm.addEventListener('click', doAdd);
+    cancel.addEventListener('click', hideAddListForm);
+    input.addEventListener('keydown', function(e) {
+      if (e.key==='Enter') doAdd();
+      if (e.key==='Escape') hideAddListForm();
+    });
   }
 
-  function hideAddListForm(){if(activeAddListForm){activeAddListForm.remove();activeAddListForm=null;}}
-
-  /* ── List Menu ── */
+  function hideAddListForm() {
+    if (activeAddListForm) { activeAddListForm.remove(); activeAddListForm = null; }
+  }
 
   function showListMenu(listId, btnEl) {
     closeAllMenus();
-    const menu=document.createElement('div');
-    menu.className='list-menu';
-    menu.innerHTML=`
-      <div class="list-menu-item" data-action="clear">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 4h12l-1.5 9H3.5L2 4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M5.5 2h5M1 4h14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-        Clear all cards
-      </div>
-      <div class="list-menu-item danger" data-action="delete">
-        <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 4h12l-1.5 9H3.5L2 4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M5.5 2h5M1 4h14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-        Delete list
-      </div>`;
-    btnEl.parentElement.style.position='relative';
+    const menu = document.createElement('div');
+    menu.className = 'list-menu';
+    menu.innerHTML =
+      '<div class="list-menu-item" data-action="clear">' +
+        '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 4h12l-1.5 9H3.5L2 4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M5.5 2h5M1 4h14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>' +
+        ' Clear all cards</div>' +
+      '<div class="list-menu-item danger" data-action="delete">' +
+        '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M2 4h12l-1.5 9H3.5L2 4z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M5.5 2h5M1 4h14" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>' +
+        ' Delete list</div>';
+    btnEl.parentElement.style.position = 'relative';
     btnEl.parentElement.appendChild(menu);
-    activeMenu={menu,listId};
-
-    menu.addEventListener('click',async e=>{
-      const item=e.target.closest('.list-menu-item');
-      if(!item)return;
-      const action=item.dataset.action;
+    activeMenu = { menu: menu, listId: listId };
+    menu.addEventListener('click', async function(e) {
+      const item = e.target.closest('.list-menu-item');
+      if (!item) return;
+      const action = item.dataset.action;
       closeAllMenus();
       UI.setSyncStatus('saving');
-      try{
-        if(action==='delete'){AppState.setState(s=>{s.lists=s.lists.filter(l=>l.id!==listId);return s;});await Storage.deleteList(listId);}
-        else if(action==='clear'){AppState.setState(s=>{const l=s.lists.find(x=>x.id===listId);if(l)l.cards=[];return s;});await Storage.clearListCards(listId);}
+      try {
+        if (action==='delete') {
+          AppState.setState(function(s){ s.lists=s.lists.filter(function(l){return l.id!==listId;}); return s; });
+          await Storage.deleteList(listId);
+        } else if (action==='clear') {
+          AppState.setState(function(s){ const l=s.lists.find(function(x){return x.id===listId;}); if(l) l.cards=[]; return s; });
+          await Storage.clearListCards(listId);
+        }
         UI.setSyncStatus('saved');
-      }catch(err){console.error(err);UI.setSyncStatus('error');}
+      } catch(err) { console.error(err); UI.setSyncStatus('error'); }
     });
   }
 
-  function closeAllMenus(){if(activeMenu){activeMenu.menu.remove();activeMenu=null;}}
+  function closeAllMenus() { if (activeMenu) { activeMenu.menu.remove(); activeMenu = null; } }
 
-  /* ── Events ── */
-
-  boardScroll.addEventListener('click', e=>{
-    const addCardBtn=e.target.closest('[data-add-card]');
-    if(addCardBtn){showAddCardForm(addCardBtn.dataset.addCard);return;}
-    const menuBtn=e.target.closest('[data-list-menu]');
-    if(menuBtn){const id=menuBtn.dataset.listMenu;activeMenu?.listId===id?closeAllMenus():showListMenu(id,menuBtn);return;}
-    if(!e.target.closest('.list-menu'))closeAllMenus();
+  boardScroll.addEventListener('click', function(e) {
+    const addCardBtn = e.target.closest('[data-add-card]');
+    if (addCardBtn) { showAddCardForm(addCardBtn.dataset.addCard); return; }
+    const menuBtn = e.target.closest('[data-list-menu]');
+    if (menuBtn) {
+      const id = menuBtn.dataset.listMenu;
+      if (activeMenu && activeMenu.listId === id) closeAllMenus(); else showListMenu(id, menuBtn);
+      return;
+    }
+    if (!e.target.closest('.list-menu')) closeAllMenus();
   });
 
-  boardScroll.addEventListener('blur',async e=>{
-    const el=e.target.closest('.list-title[data-list-id]');
-    if(!el)return;
-    const listId=el.dataset.listId, newTitle=el.textContent.trim();
-    if(!newTitle){el.textContent=AppState.getState().lists.find(l=>l.id===listId)?.title||'Untitled';return;}
-    AppState.setState(s=>{const l=s.lists.find(x=>x.id===listId);if(l)l.title=newTitle;return s;});
-    UI.setSyncStatus('saving');
-    try{await Storage.updateListTitle(listId,newTitle);UI.setSyncStatus('saved');}
-    catch(err){console.error(err);UI.setSyncStatus('error');}
-  },true);
-
-  boardScroll.addEventListener('keydown',e=>{
-    if(e.target.closest('.list-title')&&e.key==='Enter'){e.preventDefault();e.target.blur();}
-  });
-
-  boardTitleEl.addEventListener('blur',async()=>{
-    const newTitle=boardTitleEl.textContent.trim();
-    if(!newTitle){boardTitleEl.textContent=AppState.getState().boardTitle;return;}
-    const{boardId}=AppState.getState();
-    AppState.setState(s=>{
-      s.boardTitle=newTitle;
-      // Fix: Update the title in the boards list so Dashboard reflects the change
-      const b = s.boards.find(x => x.id === boardId);
-      if (b) {
-        b.title = newTitle;
-        b.updated_at = new Date().toISOString();
-      }
+  boardScroll.addEventListener('blur', async function(e) {
+    const el = e.target.closest('.list-title[data-list-id]');
+    if (!el) return;
+    const listId   = el.dataset.listId;
+    const newTitle = el.textContent.trim();
+    if (!newTitle) {
+      const l = AppState.getState().lists.find(function(x){return x.id===listId;});
+      el.textContent = (l && l.title) || 'Untitled';
+      return;
+    }
+    AppState.setState(function(s) {
+      const l = s.lists.find(function(x){return x.id===listId;});
+      if (l) l.title = newTitle;
       return s;
     });
     UI.setSyncStatus('saving');
-    try{await Storage.updateBoardTitle(boardId,newTitle);UI.setSyncStatus('saved');}
-    catch(err){console.error(err);UI.setSyncStatus('error');}
-  });
-  boardTitleEl.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();boardTitleEl.blur();}});
+    try { await Storage.updateListTitle(listId, newTitle); UI.setSyncStatus('saved'); }
+    catch(err) { console.error(err); UI.setSyncStatus('error'); }
+  }, true);
 
-  addListBtn?.addEventListener('click',showAddListForm);
-  addListGhost?.addEventListener('click',showAddListForm);
-
-  document.addEventListener('click',e=>{
-    if(activeAddCardListId&&!e.target.closest('.add-card-form')&&!e.target.closest('[data-add-card]'))hideAddCardForm();
-    if(activeAddListForm&&!e.target.closest('.add-list-form')&&!e.target.closest('#addListBtn')&&!e.target.closest('#addListGhost'))hideAddListForm();
+  boardScroll.addEventListener('keydown', function(e) {
+    if (e.target.closest('.list-title') && e.key==='Enter') { e.preventDefault(); e.target.blur(); }
   });
 
-  AppState.subscribe(state=>{if(state.view==='board')render();});
+  boardTitleEl.addEventListener('blur', async function() {
+    const newTitle = boardTitleEl.textContent.trim();
+    if (!newTitle) { boardTitleEl.textContent = AppState.getState().boardTitle; return; }
+    const boardId = AppState.getState().boardId;
+    AppState.setState(function(s) {
+      s.boardTitle = newTitle;
+      const b = s.boards.find(function(x){return x.id===boardId;});
+      if (b) { b.title = newTitle; b.updated_at = new Date().toISOString(); }
+      return s;
+    });
+    UI.setSyncStatus('saving');
+    try { await Storage.updateBoardTitle(boardId, newTitle); UI.setSyncStatus('saved'); }
+    catch(err) { console.error(err); UI.setSyncStatus('error'); }
+  });
+  boardTitleEl.addEventListener('keydown', function(e) {
+    if (e.key==='Enter') { e.preventDefault(); boardTitleEl.blur(); }
+  });
+
+  addListBtn?.addEventListener('click', showAddListForm);
+  addListGhost?.addEventListener('click', showAddListForm);
+
+  document.addEventListener('click', function(e) {
+    if (activeAddCardListId && !e.target.closest('.add-card-form') && !e.target.closest('[data-add-card]')) hideAddCardForm();
+    if (activeAddListForm  && !e.target.closest('.add-list-form')  && !e.target.closest('#addListBtn') && !e.target.closest('#addListGhost')) hideAddListForm();
+  });
+
+  AppState.subscribe(function(state) { if (state.view==='board') render(); });
 
   return { render };
 })();
@@ -1348,59 +1856,59 @@ const Board = (() => {
    ═══════════════════════════════════════════════════════════ */
 
 const SmsSetup = (() => {
-  const overlay   = document.getElementById('smsSetupOverlay');
-  const phoneEl   = document.getElementById('smsSetupPhone');
-  const saveBtn   = document.getElementById('smsSetupSave');
-  const skipBtn   = document.getElementById('smsSetupSkip');
-  const closeBtn  = document.getElementById('smsSetupClose');
+  const overlay  = document.getElementById('smsSetupOverlay');
+  const phoneEl  = document.getElementById('smsSetupPhone');
+  const saveBtn  = document.getElementById('smsSetupSave');
+  const skipBtn  = document.getElementById('smsSetupSkip');
+  const closeBtn = document.getElementById('smsSetupClose');
 
   function open() {
     if (!overlay) return;
     const profile = AppState.getState().profile;
-    if (phoneEl) phoneEl.value = profile?.phone || '';
+    if (phoneEl) phoneEl.value = (profile && profile.phone) || '';
     overlay.classList.add('open');
-    phoneEl?.focus();
+    if (phoneEl) phoneEl.focus();
     document.body.style.overflow = 'hidden';
   }
 
   function close() {
-    overlay?.classList.remove('open');
+    if (overlay) overlay.classList.remove('open');
     document.body.style.overflow = '';
   }
 
   async function saveAndEnable() {
-    const raw   = phoneEl?.value.trim();
+    const raw   = phoneEl ? phoneEl.value.trim() : '';
     const phone = SMS.normalizeUS(raw);
-    if (!raw) { phoneEl?.focus(); return; }
+    if (!raw) { if (phoneEl) phoneEl.focus(); return; }
     if (!phone) {
-      saveBtn.textContent = 'Bad number';
+      if (saveBtn) saveBtn.textContent = 'Bad number';
       if (phoneEl) phoneEl.style.borderColor = 'var(--red, #e55)';
-      setTimeout(() => { saveBtn.textContent = 'Save & Enable'; if (phoneEl) phoneEl.style.borderColor = ''; }, 2000);
+      setTimeout(function() { if (saveBtn) saveBtn.textContent = 'Save & Enable'; if (phoneEl) phoneEl.style.borderColor = ''; }, 2000);
       return;
     }
     const userId = Auth.getUserId();
-    saveBtn.textContent = '…';
+    if (saveBtn) saveBtn.textContent = '\u2026';
     try {
-      await Storage.upsertProfile(userId, { phone, sms_enabled: true });
-      AppState.setState(s => {
+      await Storage.upsertProfile(userId, { phone: phone, sms_enabled: true });
+      AppState.setState(function(s) {
         if (s.profile) { s.profile.phone = phone; s.profile.sms_enabled = true; }
         return s;
       });
-      if (phoneEl) phoneEl.value = phone; // show normalized
+      if (phoneEl) phoneEl.value = phone;
       UI.setProfile(AppState.getState().profile);
       close();
     } catch (err) {
       console.error(err);
-      saveBtn.textContent = 'Error';
-      setTimeout(() => { saveBtn.textContent = 'Save & Enable'; }, 1800);
+      if (saveBtn) saveBtn.textContent = 'Error';
+      setTimeout(function() { if (saveBtn) saveBtn.textContent = 'Save & Enable'; }, 1800);
     }
   }
 
-  saveBtn?.addEventListener('click', saveAndEnable);
-  skipBtn?.addEventListener('click', close);
-  closeBtn?.addEventListener('click', close);
-  overlay?.addEventListener('click', e => { if (e.target === overlay) close(); });
-  phoneEl?.addEventListener('keydown', e => { if (e.key === 'Enter') saveAndEnable(); if (e.key === 'Escape') close(); });
+  if (saveBtn)  saveBtn.addEventListener('click', saveAndEnable);
+  if (skipBtn)  skipBtn.addEventListener('click', close);
+  if (closeBtn) closeBtn.addEventListener('click', close);
+  if (overlay)  overlay.addEventListener('click', function(e) { if (e.target === overlay) close(); });
+  if (phoneEl)  phoneEl.addEventListener('keydown', function(e) { if (e.key==='Enter') saveAndEnable(); if (e.key==='Escape') close(); });
 
   return { open, close };
 })();
@@ -1410,145 +1918,129 @@ const SmsSetup = (() => {
    ═══════════════════════════════════════════════════════════ */
 
 const ProfileMenu = (() => {
-  const wrap      = document.getElementById('profileWrap');
-  const btn       = document.getElementById('profileBtn');
-  const dropdown  = document.getElementById('profileDropdown');
-  const saveBtn   = document.getElementById('saveNameBtn');
-  const nameInput = document.getElementById('profileNameInput');
-  const smsToggle = document.getElementById('smsToggle');
-  const phoneWrap = document.getElementById('profilePhoneWrap');
-  const phoneInput= document.getElementById('profilePhoneInput');
-  const savePhone = document.getElementById('savePhoneBtn');
-  let open = false;
+  const wrap       = document.getElementById('profileWrap');
+  const btn        = document.getElementById('profileBtn');
+  const dropdown   = document.getElementById('profileDropdown');
+  const saveBtn    = document.getElementById('saveNameBtn');
+  const nameInput  = document.getElementById('profileNameInput');
+  const smsToggle  = document.getElementById('smsToggle');
+  const phoneInput = document.getElementById('profilePhoneInput');
+  const savePhone  = document.getElementById('savePhoneBtn');
+  let isOpen = false;
 
   function show() {
-    open = true;
-    dropdown.classList.add('open');
-    btn.setAttribute('aria-expanded', 'true');
+    isOpen = true;
+    if (dropdown) dropdown.classList.add('open');
+    if (btn) btn.setAttribute('aria-expanded', 'true');
     Theme.apply(Theme.get());
   }
-
   function hide() {
-    open = false;
-    dropdown.classList.remove('open');
-    btn.setAttribute('aria-expanded', 'false');
+    isOpen = false;
+    if (dropdown) dropdown.classList.remove('open');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
   }
+  function toggle() { isOpen ? hide() : show(); }
 
-  function toggle() { open ? hide() : show(); }
+  if (btn) btn.addEventListener('click', function(e) { e.stopPropagation(); toggle(); });
+  document.addEventListener('click', function(e) { if (isOpen && wrap && !wrap.contains(e.target)) hide(); });
+  document.addEventListener('keydown', function(e) { if (e.key==='Escape' && isOpen) hide(); });
 
-  btn?.addEventListener('click', e => { e.stopPropagation(); toggle(); });
-
-  document.addEventListener('click', e => {
-    if (open && !wrap?.contains(e.target)) hide();
-  });
-
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && open) hide(); });
-
-  // Theme buttons
-  document.getElementById('themeOptions')?.addEventListener('click', e => {
+  document.getElementById('themeOptions')?.addEventListener('click', function(e) {
     const tb = e.target.closest('.theme-btn');
     if (tb) Theme.apply(tb.dataset.theme);
   });
 
-  // Save display name
-  saveBtn?.addEventListener('click', async () => {
-    const name = nameInput?.value.trim();
-    if (!name) return;
-    const userId = Auth.getUserId();
-    saveBtn.textContent = '…';
-    try {
-      await Storage.upsertProfile(userId, { display_name: name });
-      AppState.setState(s => { if (s.profile) s.profile.display_name = name; return s; });
-      UI.setProfile(AppState.getState().profile);
-      saveBtn.textContent = 'Saved!';
-      setTimeout(() => { saveBtn.textContent = 'Save'; }, 1800);
-    } catch (err) {
-      console.error(err);
-      saveBtn.textContent = 'Error';
-      setTimeout(() => { saveBtn.textContent = 'Save'; }, 1800);
-    }
-  });
-
-  nameInput?.addEventListener('keydown', e => { if (e.key === 'Enter') saveBtn?.click(); });
-
-  // SMS toggle
-  smsToggle?.addEventListener('click', async () => {
-    const profile = AppState.getState().profile;
-    const currentlyOn = !!profile?.sms_enabled;
-
-    if (!currentlyOn) {
-      // Turning ON — if no phone yet, show setup modal
-      if (!profile?.phone?.trim()) {
-        hide();
-        SmsSetup.open();
-        return;
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async function() {
+      const name = nameInput ? nameInput.value.trim() : '';
+      if (!name) return;
+      const userId = Auth.getUserId();
+      saveBtn.textContent = '\u2026';
+      try {
+        await Storage.upsertProfile(userId, { display_name: name });
+        AppState.setState(function(s) { if (s.profile) s.profile.display_name = name; return s; });
+        UI.setProfile(AppState.getState().profile);
+        saveBtn.textContent = 'Saved!';
+        setTimeout(function() { saveBtn.textContent = 'Save'; }, 1800);
+      } catch (err) {
+        console.error(err);
+        saveBtn.textContent = 'Error';
+        setTimeout(function() { saveBtn.textContent = 'Save'; }, 1800);
       }
-      // Has phone already — just enable
-      await setSmsEnabled(true);
-    } else {
-      await setSmsEnabled(false);
-    }
-  });
+    });
+  }
+  if (nameInput) nameInput.addEventListener('keydown', function(e) { if (e.key==='Enter' && saveBtn) saveBtn.click(); });
+
+  if (smsToggle) {
+    smsToggle.addEventListener('click', async function() {
+      const profile     = AppState.getState().profile;
+      const currentlyOn = !!(profile && profile.sms_enabled);
+      if (!currentlyOn) {
+        if (!(profile && profile.phone && profile.phone.trim())) { hide(); SmsSetup.open(); return; }
+        await setSmsEnabled(true);
+      } else {
+        await setSmsEnabled(false);
+      }
+    });
+  }
 
   async function setSmsEnabled(val) {
     const userId = Auth.getUserId();
     try {
       await Storage.upsertProfile(userId, { sms_enabled: val });
-      AppState.setState(s => { if (s.profile) s.profile.sms_enabled = val; return s; });
+      AppState.setState(function(s) { if (s.profile) s.profile.sms_enabled = val; return s; });
       UI.setProfile(AppState.getState().profile);
     } catch (err) { console.error(err); }
   }
 
-  // Save phone number
-  savePhone?.addEventListener('click', async () => {
-    const raw    = phoneInput?.value.trim();
-    const userId = Auth.getUserId();
-    const phone  = SMS.normalizeUS(raw);
-    if (raw && !phone) {
-      savePhone.textContent = 'Bad #';
-      if (phoneInput) phoneInput.style.borderColor = 'var(--red, #e55)';
-      setTimeout(() => { savePhone.textContent = 'Save'; if (phoneInput) phoneInput.style.borderColor = ''; }, 2000);
-      return;
-    }
-    savePhone.textContent = '…';
-    try {
-      await Storage.upsertProfile(userId, { phone: phone || null });
-      AppState.setState(s => { if (s.profile) s.profile.phone = phone || null; return s; });
-      if (phoneInput && phone) phoneInput.value = phone; // show normalized form
-      UI.setProfile(AppState.getState().profile);
-      savePhone.textContent = 'Saved!';
-      setTimeout(() => { savePhone.textContent = 'Save'; }, 1800);
-    } catch (err) {
-      console.error(err);
-      savePhone.textContent = 'Error';
-      setTimeout(() => { savePhone.textContent = 'Save'; }, 1800);
-    }
-  });
+  if (savePhone) {
+    savePhone.addEventListener('click', async function() {
+      const raw    = phoneInput ? phoneInput.value.trim() : '';
+      const userId = Auth.getUserId();
+      const phone  = SMS.normalizeUS(raw);
+      if (raw && !phone) {
+        savePhone.textContent = 'Bad #';
+        if (phoneInput) phoneInput.style.borderColor = 'var(--red, #e55)';
+        setTimeout(function() { savePhone.textContent = 'Save'; if (phoneInput) phoneInput.style.borderColor = ''; }, 2000);
+        return;
+      }
+      savePhone.textContent = '\u2026';
+      try {
+        await Storage.upsertProfile(userId, { phone: phone || null });
+        AppState.setState(function(s) { if (s.profile) s.profile.phone = phone || null; return s; });
+        if (phoneInput && phone) phoneInput.value = phone;
+        UI.setProfile(AppState.getState().profile);
+        savePhone.textContent = 'Saved!';
+        setTimeout(function() { savePhone.textContent = 'Save'; }, 1800);
+      } catch (err) {
+        console.error(err);
+        savePhone.textContent = 'Error';
+        setTimeout(function() { savePhone.textContent = 'Save'; }, 1800);
+      }
+    });
+  }
+  if (phoneInput) phoneInput.addEventListener('keydown', function(e) { if (e.key==='Enter' && savePhone) savePhone.click(); });
 
-  phoneInput?.addEventListener('keydown', e => { if (e.key === 'Enter') savePhone?.click(); });
-
-  // Copy user ID to clipboard
-  document.getElementById('copyUserIdBtn')?.addEventListener('click', async () => {
-    const uid = document.getElementById('profileUserIdFull')?.value;
+  document.getElementById('copyUserIdBtn')?.addEventListener('click', async function() {
+    const uidInput = document.getElementById('profileUserIdFull');
+    const uid      = uidInput ? uidInput.value : '';
     if (!uid) return;
-    const btn = document.getElementById('copyUserIdBtn');
+    const copyBtn = document.getElementById('copyUserIdBtn');
     try {
       await navigator.clipboard.writeText(uid);
-      btn.textContent = 'Copied!';
-    } catch {
-      // Fallback for non-HTTPS
+      copyBtn.textContent = 'Copied!';
+    } catch (_) {
       const ta = document.createElement('textarea');
       ta.value = uid; ta.style.position = 'fixed'; ta.style.opacity = '0';
       document.body.appendChild(ta); ta.select();
       document.execCommand('copy');
       document.body.removeChild(ta);
-      btn.textContent = 'Copied!';
+      copyBtn.textContent = 'Copied!';
     }
-    setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+    setTimeout(function() { copyBtn.textContent = 'Copy'; }, 2000);
   });
 
-  // Sign out
-  document.getElementById('signOutBtn')?.addEventListener('click', async () => {
+  document.getElementById('signOutBtn')?.addEventListener('click', async function() {
     hide();
     try { await Auth.signOut(); } catch (err) { console.error(err); }
   });
@@ -1564,216 +2056,158 @@ function initAuthUI() {
   const signInForm = document.getElementById('signInForm');
   const signUpForm = document.getElementById('signUpForm');
 
-  document.getElementById('showSignUp')?.addEventListener('click', e => {
+  document.getElementById('showSignUp')?.addEventListener('click', function(e) {
     e.preventDefault(); signInForm.style.display='none'; signUpForm.style.display=''; UI.authError('');
   });
-  document.getElementById('showSignIn')?.addEventListener('click', e => {
+  document.getElementById('showSignIn')?.addEventListener('click', function(e) {
     e.preventDefault(); signUpForm.style.display='none'; signInForm.style.display=''; UI.authError('');
   });
 
-  document.getElementById('signInBtn')?.addEventListener('click', async () => {
-    const email    = document.getElementById('signInEmail')?.value.trim();
-    const password = document.getElementById('signInPassword')?.value;
+  document.getElementById('signInBtn')?.addEventListener('click', async function() {
+    const emailEl = document.getElementById('signInEmail');
+    const passEl  = document.getElementById('signInPassword');
     UI.authError('');
-    try { await Auth.signIn(email, password); }
+    try { await Auth.signIn(emailEl ? emailEl.value.trim() : '', passEl ? passEl.value : ''); }
     catch (err) { UI.authError(err.message || 'Sign in failed.'); }
   });
 
-  // Google Sign-In
-  document.getElementById('signInGoogleBtn')?.addEventListener('click', async () => {
+  document.getElementById('signInGoogleBtn')?.addEventListener('click', async function() {
     UI.authError('');
     try {
-      // redirectTo must exactly match what's in:
-      //   1. Supabase → Authentication → URL Configuration → Redirect URLs
-      //   2. Google Cloud Console → Authorized redirect URIs (the Supabase callback)
-      // For GitHub Pages this is typically https://username.github.io/repo-name/
       const redirectTo = window.location.href.split('?')[0].split('#')[0];
-      const { error } = await sb.auth.signInWithOAuth({
+      const result = await sb.auth.signInWithOAuth({
         provider: 'google',
-        options: {
-          redirectTo,
-          queryParams: { access_type: 'offline', prompt: 'consent' },
-        }
+        options: { redirectTo: redirectTo, queryParams: { access_type: 'offline', prompt: 'consent' } },
       });
-      if (error) throw error;
+      if (result.error) throw result.error;
     } catch (err) {
       UI.authError(err.message || 'Google sign in failed. Make sure Google OAuth is configured in Supabase.');
     }
   });
 
-  document.getElementById('signUpBtn')?.addEventListener('click', async () => {
-    const email    = document.getElementById('signUpEmail')?.value.trim();
-    const name     = document.getElementById('signUpName')?.value.trim();
-    const password = document.getElementById('signUpPassword')?.value;
+  document.getElementById('signUpBtn')?.addEventListener('click', async function() {
+    const emailEl = document.getElementById('signUpEmail');
+    const nameEl  = document.getElementById('signUpName');
+    const passEl  = document.getElementById('signUpPassword');
     UI.authError('');
     try {
-      await Auth.signUp(email, password, name);
-      signUpForm.innerHTML = `
-        <div style="text-align:center;padding:12px 0;color:var(--green);">
-          <div style="font-size:2rem;margin-bottom:8px;">✓</div>
-          <p style="font-weight:500;line-height:1.5;">Account created!<br>Check your email to confirm, then sign in.</p>
-        </div>
-        <p class="auth-switch" style="margin-top:16px;"><a href="#" id="backToSignIn">Back to sign in</a></p>`;
-      document.getElementById('backToSignIn')?.addEventListener('click', e => {
+      await Auth.signUp(
+        emailEl ? emailEl.value.trim() : '',
+        passEl  ? passEl.value : '',
+        nameEl  ? nameEl.value.trim() : ''
+      );
+      signUpForm.innerHTML =
+        '<div style="text-align:center;padding:12px 0;color:var(--green);">' +
+          '<div style="font-size:2rem;margin-bottom:8px;">\u2713</div>' +
+          '<p style="font-weight:500;line-height:1.5;">Account created!<br>Check your email to confirm, then sign in.</p>' +
+        '</div>' +
+        '<p class="auth-switch" style="margin-top:16px;"><a href="#" id="backToSignIn">Back to sign in</a></p>';
+      document.getElementById('backToSignIn')?.addEventListener('click', function(e) {
         e.preventDefault(); signUpForm.style.display='none'; signInForm.style.display='';
       });
     } catch (err) { UI.authError(err.message || 'Sign up failed.'); }
   });
 
-  ['signInEmail','signInPassword'].forEach(id =>
-    document.getElementById(id)?.addEventListener('keydown', e => { if (e.key==='Enter') document.getElementById('signInBtn')?.click(); })
-  );
-  ['signUpEmail','signUpName','signUpPassword'].forEach(id =>
-    document.getElementById(id)?.addEventListener('keydown', e => { if (e.key==='Enter') document.getElementById('signUpBtn')?.click(); })
-  );
+  ['signInEmail','signInPassword'].forEach(function(id) {
+    document.getElementById(id)?.addEventListener('keydown', function(e) {
+      if (e.key==='Enter') document.getElementById('signInBtn')?.click();
+    });
+  });
+  ['signUpEmail','signUpName','signUpPassword'].forEach(function(id) {
+    document.getElementById(id)?.addEventListener('keydown', function(e) {
+      if (e.key==='Enter') document.getElementById('signUpBtn')?.click();
+    });
+  });
 }
 
 /* ═══════════════════════════════════════════════════════════
    SMS REMINDERS
-   API key is stored in Supabase Edge Function secrets — never
-   in this file. See send-sms.ts for the server-side function.
+   API key stored in Supabase Edge Function secrets only.
    ═══════════════════════════════════════════════════════════ */
 
 const SMS = (() => {
-  // No API keys here — the key lives in Supabase Edge Function secrets.
-  // Supabase → Edge Functions → Manage Secrets → add RAPIDAPI_KEY
-
-  /**
-   * Normalize a US phone number to E.164 (+1XXXXXXXXXX).
-   * Accepts: 2125551234, 212-555-1234, (212) 555-1234, +12125551234, etc.
-   */
   function normalizeUS(raw) {
     if (!raw) return null;
     const digits = raw.replace(/\D/g, '');
-    if (digits.length === 10) return `+1${digits}`;
-    if (digits.length === 11 && digits[0] === '1') return `+${digits}`;
-    if (raw.startsWith('+') && digits.length === 11) return `+${digits}`;
+    if (digits.length === 10) return '+1' + digits;
+    if (digits.length === 11 && digits[0] === '1') return '+' + digits;
+    if (raw.startsWith('+') && digits.length === 11) return '+' + digits;
     return null;
   }
 
-  /**
-   * Send SMS via the Supabase Edge Function (keeps API key off the client).
-   * Fails silently on CORS/network errors so they don't surface to users.
-   */
   async function send(to, text) {
     if (!to || !text) return { ok: false, reason: 'missing_args' };
-
     const normalized = normalizeUS(to);
     if (!normalized) {
-      console.warn(`SMS: could not normalize "${to}" — skipping`);
+      console.warn('SMS: could not normalize "' + to + '" \u2014 skipping');
       return { ok: false, reason: 'bad_number' };
     }
-
-    // Get the current session token to authenticate the Edge Function call
     let session;
-    try {
-      const { data } = await sb.auth.getSession();
-      session = data?.session;
-    } catch (_) {}
+    try { const result = await sb.auth.getSession(); session = result.data && result.data.session; } catch (_) {}
     if (!session) {
-      console.warn('SMS: no active session — skipping');
+      console.warn('SMS: no active session \u2014 skipping');
       return { ok: false, reason: 'no_session' };
     }
-
     try {
-      const resp = await fetch(`${SUPABASE_URL}/functions/v1/send-sms`, {
+      const resp = await fetch(SUPABASE_URL + '/functions/v1/send-sms', {
         method: 'POST',
         headers: {
           'Content-Type':  'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
+          'Authorization': 'Bearer ' + session.access_token,
           'apikey':        SUPABASE_ANON_KEY,
         },
-        body: JSON.stringify({ to: normalized, text }),
+        body: JSON.stringify({ to: normalized, text: text }),
       });
-
-      const payload = await resp.json().catch(() => ({}));
+      const payload = await resp.json().catch(function() { return {}; });
       if (!resp.ok) {
         console.warn('SMS Edge Function error:', resp.status, payload);
         return { ok: false, reason: 'edge_error', status: resp.status };
       }
-
-      console.log('SMS sent OK →', normalized);
+      console.log('SMS sent OK \u2192', normalized);
       return payload;
     } catch (err) {
-      // CORS, network offline, Edge Function not deployed — log and move on
       console.warn('SMS send skipped (network/CORS):', err.message);
       return { ok: false, reason: 'network_error' };
     }
   }
 
-  /**
-   * Schedule reminders for a card. Called when a card is saved.
-   */
   async function dispatchCardReminders(card) {
-    const phone = card.phone?.trim();
+    const phone = card.phone ? card.phone.trim() : '';
     if (!phone) return;
     const now = Date.now();
-
     if (card.dueDate) {
       const timeStr   = card.dueTime || '09:00';
-      const deadline  = new Date(`${card.dueDate}T${timeStr}`).getTime();
+      const deadline  = new Date(card.dueDate + 'T' + timeStr).getTime();
       const triggerAt = deadline - 60 * 60 * 1000;
       if (triggerAt > now) {
         const delay = triggerAt - now;
-        const msg = `TaskDeck: "${card.title}" is due at ${formatTime12(timeStr)} on ${card.dueDate}.`;
-        console.log(`SMS scheduled in ${Math.round(delay / 60000)} min → "${card.title}"`);
-        setTimeout(() => send(phone, msg).catch(console.error), delay);
+        const msg   = 'TaskDeck: "' + card.title + '" is due at ' + formatTime12(timeStr) + ' on ' + card.dueDate + '.';
+        console.log('SMS scheduled in ' + Math.round(delay / 60000) + ' min \u2192 "' + card.title + '"');
+        setTimeout(function() { send(phone, msg).catch(console.error); }, delay);
       }
     }
-
-    (card.reminders || []).forEach((r) => {
+    (card.reminders || []).forEach(function(r) {
       if (!r.date) return;
-      const t = new Date(`${r.date}T${r.time || '09:00'}`).getTime();
+      const t = new Date(r.date + 'T' + (r.time || '09:00')).getTime();
       if (t > now) {
         const delay = t - now;
-        const msg = `TaskDeck reminder: "${card.title}"${card.dueDate ? ` (due ${card.dueDate})` : ''}.`;
-        setTimeout(() => send(phone, msg).catch(console.error), delay);
+        const msg   = 'TaskDeck reminder: "' + card.title + '"' + (card.dueDate ? ' (due ' + card.dueDate + ')' : '') + '.';
+        setTimeout(function() { send(phone, msg).catch(console.error); }, delay);
       }
     });
   }
 
   function formatTime12(val) {
     if (!val) return '';
-    const [h, m] = val.split(':').map(Number);
+    const parts = val.split(':').map(Number);
+    const h = parts[0], m = parts[1];
     const ampm = h < 12 ? 'AM' : 'PM';
     const hh   = h % 12 === 0 ? 12 : h % 12;
-    return `${hh}:${String(m).padStart(2,'0')} ${ampm}`;
+    return hh + ':' + (m < 10 ? '0' + m : '' + m) + ' ' + ampm;
   }
 
   return { send, normalizeUS, dispatchCardReminders, formatTime12 };
 })();
-
-
-/* ═══════════════════════════════════════════════════════════
-   UPDATED UI HELPERS — add showForum / showMessages
-   ═══════════════════════════════════════════════════════════ */
-
-// Patch UI with forum support (appended after UI object definition above)
-UI.showForum = function() {
-  this.el('dashboard').style.display      = 'none';
-  this.el('boardContainer').style.display = 'none';
-  this.el('messagesView').style.display   = 'none';
-  this.el('forumView').style.display      = '';
-  this.el('headerTabs').style.display     = '';
-  this.el('syncStatus').style.display     = 'none';
-  this.el('shareBoardFromBoardBtn') && (this.el('shareBoardFromBoardBtn').style.display = 'none');
-};
-
-// Patch showDashboard to also hide forumView
-const _origShowDashboard = UI.showDashboard.bind(UI);
-UI.showDashboard = function() {
-  _origShowDashboard();
-  const fv = this.el('forumView');
-  if (fv) fv.style.display = 'none';
-};
-
-// Patch showMessages to also hide forumView
-const _origShowMessages = UI.showMessages.bind(UI);
-UI.showMessages = function() {
-  _origShowMessages();
-  const fv = this.el('forumView');
-  if (fv) fv.style.display = 'none';
-};
 
 /* ═══════════════════════════════════════════════════════════
    BOOT
@@ -1781,109 +2215,93 @@ UI.showMessages = function() {
 
 let isAppInitialized = false;
 
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', async function() {
   Theme.init();
   initAuthUI();
-
   UI.showLoading();
-  UI.setLoading('Starting TaskDeck…', 10);
+  UI.setLoading('Starting TaskDeck\u2026', 10);
 
-  // Home button → back to dashboard
-  document.getElementById('logoHomeBtn')?.addEventListener('click', e => {
+  document.getElementById('logoHomeBtn')?.addEventListener('click', function(e) {
     e.preventDefault();
-    AppState.setState(s => ({ ...s, view: 'dashboard', tab: 'boards' }));
-    document.querySelectorAll('.header-tab').forEach(t =>
-      t.classList.toggle('active', t.dataset.tab === 'boards')
-    );
-    UI.el('dashboardTitle').textContent = 'My Boards';
+    AppState.setState(function(s) { return Object.assign({}, s, { view: 'dashboard', tab: 'boards' }); });
+    document.querySelectorAll('.header-tab').forEach(function(t) {
+      t.classList.toggle('active', t.dataset.tab === 'boards');
+    });
+    const titleEl = UI.el('dashboardTitle');
+    if (titleEl) titleEl.textContent = 'My Boards';
     UI.showDashboard();
     Dashboard.render();
   });
 
   await Auth.init(
-    async user => {
+    async function(user) {
       if (isAppInitialized) return;
       isAppInitialized = true;
       UI.hideAuth();
 
-      async function withRetry(label, pct, fn, retries = 3) {
+      async function withRetry(label, pct, fn, retries) {
+        retries = retries || 3;
         for (let i = 0; i < retries; i++) {
           try {
             UI.setLoading(label, pct);
             return await fn();
           } catch (err) {
             if (i === retries - 1) throw err;
-            UI.setLoading(`${label} (retrying…)`, pct);
-            await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+            UI.setLoading(label + ' (retrying\u2026)', pct);
+            await new Promise(function(r) { setTimeout(r, 1000 * (i + 1)); });
           }
         }
       }
 
       try {
-        await withRetry('Syncing profile…', 40, () => {
-          const displayName =
-            user.user_metadata?.display_name ||
-            user.user_metadata?.full_name    ||
-            user.user_metadata?.name         || '';
+        await withRetry('Syncing profile\u2026', 40, function() {
+          const meta        = user.user_metadata || {};
+          const displayName = meta.display_name || meta.full_name || meta.name || '';
           return Storage.upsertProfile(user.id, {
             display_name: displayName || undefined,
             email:        user.email,
           });
         });
 
-        const profileRow = await withRetry('Loading profile…', 55, () =>
-          Storage.getProfile(user.id)
-        );
+        const profileRow = await withRetry('Loading profile\u2026', 55, function() {
+          return Storage.getProfile(user.id);
+        });
         const profile = profileRow
-          ? { ...profileRow, email: user.email }
+          ? Object.assign({}, profileRow, { email: user.email })
           : { id: user.id, email: user.email, display_name: '' };
 
-        const boards = await withRetry('Syncing boards…', 75, () =>
-          Storage.getBoards(user.id)
-        );
+        const boards = await withRetry('Syncing boards\u2026', 75, function() {
+          return Storage.getBoards(user.id);
+        });
 
         if (boards.length === 0) {
           try {
-            UI.setLoading('Creating your first board…', 82);
+            UI.setLoading('Creating your first board\u2026', 82);
             const defaultBoard = await Storage.createBoard(user.id, 'My First Board', '#C97D4E');
             await Storage.seedBoard(defaultBoard.id);
-            boards.push({ ...defaultBoard, is_pinned: false });
+            boards.push(Object.assign({}, defaultBoard, { is_pinned: false }));
           } catch (e) { console.warn('Could not create default board:', e); }
         }
 
         let sharedBoards = [];
         try { sharedBoards = await Storage.getSharedBoards(); } catch (_) {}
 
-        AppState.setState(() => ({
-          view:         'dashboard',
-          tab:          'boards',
-          profile,
-          boards,
-          sharedBoards,
-          groups:       [],
-          boardId:      null,
-          boardTitle:   '',
-          boardColor:   '#C97D4E',
-          lists:        [],
-          searchQuery:  '',
-          sortOrder:    'recent',
-        }), true);
-
-        /* ── Init feature modules ── */
-        const { MessagesView, GroupsView, Forum, Storage: MsgStore } =
-          createMessagingModule(sb, AppState, Auth, Render, UI);
-        const { BoardSharing } =
-          createSharingModule(sb, AppState, Render, UI);
-
-        // Expose on window so Dashboard + Board can call them
-        window._MessagesView  = MessagesView;
-        window._GroupsView    = GroupsView;
-        window._Forum         = Forum;
-        window._BoardSharing  = BoardSharing;
-        window._GroupsStorage = MsgStore;   // getUserGroups, createGroup, etc.
-
-        MessagesView.init();
-        Forum.init();
+        AppState.setState(function() {
+          return {
+            view:         'dashboard',
+            tab:          'boards',
+            profile:      profile,
+            boards:       boards,
+            sharedBoards: sharedBoards,
+            groups:       [],
+            boardId:      null,
+            boardTitle:   '',
+            boardColor:   '#C97D4E',
+            lists:        [],
+            searchQuery:  '',
+            sortOrder:    'recent',
+          };
+        }, true);
 
         UI.setProfile(profile);
         UI.setLoading('Ready!', 100);
@@ -1896,34 +2314,36 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.error('Boot error:', err);
         isAppInitialized = false;
         UI.setLoading('Could not load your data.', 100);
-
         const loadingInner = document.querySelector('.loading-inner');
         if (loadingInner) {
           const retryBtn = document.createElement('button');
-          retryBtn.textContent = 'Retry';
-          retryBtn.className   = 'btn-primary';
+          retryBtn.textContent   = 'Retry';
+          retryBtn.className     = 'btn-primary';
           retryBtn.style.cssText = 'margin-top:16px;';
-          retryBtn.onclick = () => window.location.reload();
-          loadingInner.querySelector('.btn-primary')?.remove();
+          retryBtn.onclick = function() { window.location.reload(); };
+          const existing = loadingInner.querySelector('.btn-primary');
+          if (existing) existing.remove();
           loadingInner.appendChild(retryBtn);
         }
       }
     },
-    () => {
+    function() {
       isAppInitialized = false;
-      AppState.setState(() => ({
-        view:        'dashboard',
-        tab:         'boards',
-        profile:     null,
-        boards:      [],
-        boardId:     null,
-        searchQuery: '',
-        sortOrder:   'recent',
-        boardTitle:  '',
-        boardColor:  '#C97D4E',
-        lists:       [],
-        groups:      [],
-      }), true);
+      AppState.setState(function() {
+        return {
+          view:        'dashboard',
+          tab:         'boards',
+          profile:     null,
+          boards:      [],
+          groups:      [],
+          boardId:     null,
+          searchQuery: '',
+          sortOrder:   'recent',
+          boardTitle:  '',
+          boardColor:  '#C97D4E',
+          lists:       [],
+        };
+      }, true);
       UI.hideLoading();
       UI.hideApp();
       UI.showAuth();
