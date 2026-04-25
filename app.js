@@ -228,9 +228,7 @@ const Auth = (() => {
 
   return { init, signIn, signUp, signOut, getUser, getUserId };
 
-/* ═══════ MODULES ═══════════════════════════════════════════ */
-import { createMessagingModule } from './messaging.js';
-import { createSharingModule }   from './sharing.js';
+})();
 
 /* ═══════════════════════════════════════════════════════════
    STORAGE  (profiles, boards, lists, cards)

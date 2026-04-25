@@ -30,7 +30,7 @@
  * Exports: createSharingModule(sb, AppState, Render, UI)
  */
 
-export function createSharingModule(sb, AppState, Render, UI) {
+window.createSharingModule = function(sb, AppState, Render, UI) {
 
   /* ── Storage helpers (sharing-specific) ── */
   const Storage = {

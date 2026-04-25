@@ -8,7 +8,9 @@
  * Exports: MessagingModule  (consumed by app.js)
  */
 
-export function createMessagingModule(sb, AppState, Auth, Render, UI) {
+// Remove the export keyword
+// export function createMessagingModule(sb, AppState, Auth, Render, UI) {
+window.createMessagingModule = function(sb, AppState, Auth, Render, UI) {
 
   /* ── Storage helpers (messaging-specific) ── */
   const Storage = {
