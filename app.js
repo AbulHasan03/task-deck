@@ -227,10 +227,15 @@ const Auth = (() => {
   }
 
   return { init, signIn, signUp, signOut, getUser, getUserId };
-})();
+
+/* ═══════ MODULES ═══════════════════════════════════════════ */
+import { createMessagingModule } from './messaging.js';
+import { createSharingModule }   from './sharing.js';
 
 /* ═══════════════════════════════════════════════════════════
-   STORAGE
+   STORAGE  (profiles, boards, lists, cards)
+   Groups, messages, and board-sharing helpers live in their
+   respective modules (messaging.js / sharing.js).
    ═══════════════════════════════════════════════════════════ */
 
 const Storage = {
@@ -239,23 +244,18 @@ const Storage = {
 
   async getProfile(userId) {
     const { data, error } = await sb
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
+      .from('profiles').select('*').eq('id', userId).single();
     if (error && error.code !== 'PGRST116') throw error;
     return data;
   },
 
   async upsertProfile(userId, fields) {
-    // Strip undefined values so we don't overwrite existing columns (e.g. phone)
     const clean = Object.fromEntries(
       Object.entries(fields).filter(([, v]) => v !== undefined)
     );
     const { error } = await sb
       .from('profiles')
-      .upsert({ id: userId, ...clean, updated_at: new Date().toISOString() },
-               { onConflict: 'id' });
+      .upsert({ id: userId, ...clean, updated_at: new Date().toISOString() }, { onConflict: 'id' });
     if (error) throw error;
   },
 
@@ -273,21 +273,20 @@ const Storage = {
 
   async createBoard(userId, title, color) {
     const { data, error } = await sb
-      .from('boards')
-      .insert({ user_id: userId, title, color })
-      .select()
-      .single();
+      .from('boards').insert({ user_id: userId, title, color }).select().single();
     if (error) throw error;
     return data;
   },
 
   async updateBoardTitle(boardId, title) {
-    const { error } = await sb.from('boards').update({ title, updated_at: new Date().toISOString() }).eq('id', boardId);
+    const { error } = await sb.from('boards')
+      .update({ title, updated_at: new Date().toISOString() }).eq('id', boardId);
     if (error) throw error;
   },
 
   async updateBoardColor(boardId, color) {
-    const { error } = await sb.from('boards').update({ color, updated_at: new Date().toISOString() }).eq('id', boardId);
+    const { error } = await sb.from('boards')
+      .update({ color, updated_at: new Date().toISOString() }).eq('id', boardId);
     if (error) throw error;
   },
 
@@ -336,9 +335,7 @@ const Storage = {
 
   async createList(boardId, title, position) {
     const { data, error } = await sb
-      .from('lists')
-      .insert({ board_id: boardId, title, position })
-      .select().single();
+      .from('lists').insert({ board_id: boardId, title, position }).select().single();
     if (error) throw error;
     return data;
   },
@@ -357,9 +354,7 @@ const Storage = {
 
   async createCard(boardId, listId, title, position) {
     const { data, error } = await sb
-      .from('cards')
-      .insert({ board_id: boardId, list_id: listId, title, position })
-      .select().single();
+      .from('cards').insert({ board_id: boardId, list_id: listId, title, position }).select().single();
     if (error) throw error;
     return data;
   },
@@ -371,13 +366,14 @@ const Storage = {
 
   async moveCard(cardId, newListId, newPosition, boardId) {
     const { error } = await sb.from('cards')
-      .update({ list_id: newListId, position: newPosition, board_id: boardId })
-      .eq('id', cardId);
+      .update({ list_id: newListId, position: newPosition, board_id: boardId }).eq('id', cardId);
     if (error) throw error;
   },
 
   async reorderCards(cards) {
-    await Promise.all(cards.map((c, i) => sb.from('cards').update({ position: i }).eq('id', c.id)));
+    await Promise.all(cards.map((c, i) =>
+      sb.from('cards').update({ position: i }).eq('id', c.id)
+    ));
   },
 
   async deleteCard(cardId) {
@@ -390,101 +386,12 @@ const Storage = {
     if (error) throw error;
   },
 
-  /* ── Board Sharing ── */
-
-  async shareBoard(boardId, userEmail, permission = 'view') {
-    const { data, error } = await sb.rpc('share_board', {
-      p_board_id: boardId,
-      p_user_email: userEmail,
-      p_permission: permission
-    });
-    if (error) throw error;
-    return data;
-  },
-
+  /* ── Shared boards (used by Dashboard) ── */
   async getSharedBoards() {
     const { data, error } = await sb.rpc('get_shared_boards');
     if (error) throw error;
     return data ?? [];
   },
-
-  async getBoardShares(boardId) {
-    const { data, error } = await sb.rpc('get_board_shares', { p_board_id: boardId });
-    if (error) throw error;
-    return data ?? [];
-  },
-
-  async removeShare(shareId) {
-    const { error } = await sb.from('board_shares').delete().eq('id', shareId);
-    if (error) throw error;
-  },
-
-  /* ── Groups ── */
-
-  async createGroup(name, description = null) {
-    const { data, error } = await sb.rpc('create_group', {
-      p_name: name,
-      p_description: description
-    });
-    if (error) throw error;
-    return data;
-  },
-
-  async getUserGroups() {
-    const { data, error } = await sb.rpc('get_user_groups');
-    if (error) throw error;
-    return data ?? [];
-  },
-
-  async addGroupMember(groupId, userEmail) {
-    const { data, error } = await sb.rpc('add_group_member', {
-      p_group_id: groupId,
-      p_user_email: userEmail
-    });
-    if (error) throw error;
-    return data;
-  },
-
-  async getGroupMembers(groupId) {
-    const { data, error } = await sb.rpc('get_group_members', { p_group_id: groupId });
-    if (error) throw error;
-    return data ?? [];
-  },
-
-  /* ── Messages ── */
-
-  async getGroupMessages(groupId, limit = 50) {
-    const { data, error } = await sb.rpc('get_group_messages', {
-      p_group_id: groupId,
-      p_limit: limit
-    });
-    if (error) throw error;
-    return data ?? [];
-  },
-
-  async sendMessage(groupId, content) {
-    const { data, error } = await sb.rpc('send_message', {
-      p_group_id: groupId,
-      p_content: content
-    });
-    if (error) throw error;
-    return data;
-  },
-
-  // Real-time message subscription
-  subscribeToMessages(groupId, callback) {
-    return sb
-      .channel(`messages:${groupId}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'messages',
-        filter: `group_id=eq.${groupId}`
-      }, payload => {
-        callback(payload.new);
-      })
-      .subscribe();
-  }
 };
 
 /* ═══════════════════════════════════════════════════════════
@@ -881,42 +788,44 @@ const CardModal = (() => {
    ═══════════════════════════════════════════════════════════ */
 
 const Dashboard = (() => {
-  const grid          = document.getElementById('boardsGrid');
-  const newBoardBtn   = document.getElementById('newBoardBtn');
+  const grid            = document.getElementById('boardsGrid');
+  const newBoardBtn     = document.getElementById('newBoardBtn');
   const newBoardOverlay = document.getElementById('newBoardOverlay');
-  const newBoardClose = document.getElementById('newBoardClose');
-  const newBoardCancel = document.getElementById('newBoardCancelBtn');
-  const createBoardBtn = document.getElementById('createBoardBtn');
-  const newBoardName  = document.getElementById('newBoardName');
-  const colorPicker   = document.getElementById('boardColorPicker');
-  const searchInput   = document.getElementById('boardSearch');
-  const sortSelect    = document.getElementById('boardSort');
-  const heading       = document.getElementById('newBoardModalHeading');
-  let selectedColor   = '#C97D4E';
-  let editMode        = false;
+  const newBoardClose   = document.getElementById('newBoardClose');
+  const newBoardCancel  = document.getElementById('newBoardCancelBtn');
+  const createBoardBtn  = document.getElementById('createBoardBtn');
+  const newBoardName    = document.getElementById('newBoardName');
+  const colorPicker     = document.getElementById('boardColorPicker');
+  const searchInput     = document.getElementById('boardSearch');
+  const sortSelect      = document.getElementById('boardSort');
+  const heading         = document.getElementById('newBoardModalHeading');
+  let selectedColor     = '#C97D4E';
+  let editMode          = false;
 
   function render() {
     const { boards, sharedBoards, searchQuery, sortOrder, tab } = AppState.getState();
-    
+
     if (tab === 'messages') {
       UI.showMessages();
-      MessagesView.render();
+      // MessagesView injected after module init
+      window._MessagesView?.render();
       return;
-    } else {
-      UI.showDashboard();
+    }
+    if (tab === 'forum') {
+      UI.showForum();
+      window._Forum?.loadPosts(true);
+      return;
     }
 
-    const source = tab === 'shared' ? (sharedBoards || []) : (boards || []);
+    UI.showDashboard();
 
-    // Filter and Sort logic
-    let filtered = source.filter(b => b.title.toLowerCase().includes((searchQuery || '').toLowerCase()));
-    
+    const source   = tab === 'shared' ? (sharedBoards || []) : (boards || []);
+    let filtered   = source.filter(b => b.title.toLowerCase().includes((searchQuery || '').toLowerCase()));
+
     filtered.sort((a, b) => {
-      const pA = !!a.is_pinned;
-      const pB = !!b.is_pinned;
+      const pA = !!a.is_pinned, pB = !!b.is_pinned;
       if (pA && !pB) return -1;
       if (!pA && pB) return 1;
-
       if (sortOrder === 'recent')    return new Date(b.updated_at) - new Date(a.updated_at);
       if (sortOrder === 'oldest')    return new Date(a.created_at) - new Date(b.created_at);
       if (sortOrder === 'alpha')     return a.title.localeCompare(b.title);
@@ -924,9 +833,8 @@ const Dashboard = (() => {
       return 0;
     });
 
-    // Build the grid content
     const fragment = document.createDocumentFragment();
-    
+
     if (filtered.length === 0 && searchQuery) {
       const empty = document.createElement('div');
       empty.className = 'empty-state';
@@ -937,14 +845,15 @@ const Dashboard = (() => {
       filtered.forEach(board => {
         const card = Render.boardCard(board);
         card.addEventListener('click', e => {
-          if (e.target.closest('[data-board-delete]') || e.target.closest('[data-board-pin]') || e.target.closest('[data-board-share]')) return;
+          if (e.target.closest('[data-board-delete]') ||
+              e.target.closest('[data-board-pin]')    ||
+              e.target.closest('[data-board-share]')) return;
           openBoard(board.id);
         });
         fragment.appendChild(card);
       });
     }
 
-    // "New board" placeholder card
     const addCard = document.createElement('div');
     addCard.className = 'board-card-new';
     addCard.innerHTML = `
@@ -953,7 +862,6 @@ const Dashboard = (() => {
     addCard.addEventListener('click', showNewBoardModal);
     fragment.appendChild(addCard);
 
-    // Clear and append all at once
     grid.innerHTML = '';
     grid.appendChild(fragment);
   }
@@ -962,9 +870,7 @@ const Dashboard = (() => {
     UI.showLoading();
     UI.setLoading('Opening board…', 40);
     try {
-      // Update timestamp to support "Last Opened" sorting
       await sb.from('boards').update({ updated_at: new Date().toISOString() }).eq('id', boardId);
-      
       const boardState = await Storage.initBoard(boardId);
       AppState.setState(s => {
         const b = s.boards.find(x => x.id === boardId);
@@ -996,8 +902,6 @@ const Dashboard = (() => {
     colorPicker.querySelectorAll('.color-swatch').forEach(s =>
       s.classList.toggle('active', s.dataset.color === selectedColor)
     );
-    newBoardOverlay.classList.add('open');
-    newBoardName.focus();
     document.body.style.overflow = 'hidden';
   }
 
@@ -1035,11 +939,8 @@ const Dashboard = (() => {
           return s;
         });
         UI.setSyncStatus('saved');
-        Board.render(); // Refresh board view to show new color/title
-      } catch (err) {
-        console.error(err);
-        UI.setSyncStatus('error');
-      }
+        Board.render();
+      } catch (err) { console.error(err); UI.setSyncStatus('error'); }
       return;
     }
 
@@ -1047,21 +948,12 @@ const Dashboard = (() => {
     UI.setSyncStatus('saving');
     try {
       const board = await Storage.createBoard(userId, title, selectedColor);
-      // Seed default lists on the new board
       await Storage.seedBoard(board.id);
-      // Add to state + render dashboard first so card is visually present
-      AppState.setState(s => {
-        s.boards.unshift(board); // put new board at top
-        return s;
-      });
-      render(); // immediately repaint the grid
+      AppState.setState(s => { s.boards.unshift(board); return s; });
+      render();
       UI.setSyncStatus('saved');
-      // Then navigate into it
       await openBoard(board.id);
-    } catch (err) {
-      console.error('Create board error:', err);
-      UI.setSyncStatus('error');
-    }
+    } catch (err) { console.error('Create board error:', err); UI.setSyncStatus('error'); }
   }
 
   async function deleteBoard(boardId) {
@@ -1072,7 +964,6 @@ const Dashboard = (() => {
     catch (err) { console.error(err); UI.setSyncStatus('error'); }
   }
 
-  // Color picker
   colorPicker?.addEventListener('click', e => {
     const swatch = e.target.closest('.color-swatch');
     if (!swatch) return;
@@ -1086,60 +977,52 @@ const Dashboard = (() => {
     const board = AppState.getState().boards.find(b => b.id === boardId);
     if (!board) return;
     const newState = !board.is_pinned;
-    
-    AppState.setState(s => {
-      const b = s.boards.find(x => x.id === boardId);
-      if (b) b.is_pinned = newState;
-      return s;
-    });
-    
+    AppState.setState(s => { const b = s.boards.find(x => x.id === boardId); if (b) b.is_pinned = newState; return s; });
     UI.setSyncStatus('saving');
-    try {
-      await Storage.updateBoardPin(boardId, newState);
-      UI.setSyncStatus('saved');
-    } catch (err) {
-      console.error(err);
-      UI.setSyncStatus('error');
-    }
+    try { await Storage.updateBoardPin(boardId, newState); UI.setSyncStatus('saved'); }
+    catch (err) { console.error(err); UI.setSyncStatus('error'); }
   }
 
   grid?.addEventListener('click', e => {
-    const delBtn = e.target.closest('[data-board-delete]');
+    const delBtn   = e.target.closest('[data-board-delete]');
     if (delBtn) { deleteBoard(delBtn.dataset.boardDelete); return; }
-    
-    const pinBtn = e.target.closest('[data-board-pin]');
+    const pinBtn   = e.target.closest('[data-board-pin]');
     if (pinBtn) { togglePin(pinBtn.dataset.boardPin); return; }
-
     const shareBtn = e.target.closest('[data-board-share]');
-    if (shareBtn) { BoardSharing.open(shareBtn.dataset.boardShare); return; }
+    if (shareBtn) { window._BoardSharing?.open(shareBtn.dataset.boardShare); return; }
   });
 
-  searchInput?.addEventListener('input', e => AppState.setState(s => { s.searchQuery = e.target.value; return s; }));
-  sortSelect?.addEventListener('change', e => AppState.setState(s => { s.sortOrder = e.target.value; return s; }));
+  searchInput?.addEventListener('input', e =>
+    AppState.setState(s => { s.searchQuery = e.target.value; return s; })
+  );
+  sortSelect?.addEventListener('change', e =>
+    AppState.setState(s => { s.sortOrder = e.target.value; return s; })
+  );
 
-  // Social tab switching
+  // Tab switching
   document.getElementById('headerTabs')?.addEventListener('click', async e => {
     const tab = e.target.closest('.header-tab');
     if (!tab) return;
     const tabKey = tab.dataset.tab;
-    
+
     document.querySelectorAll('.header-tab').forEach(t => t.classList.remove('active'));
     tab.classList.add('active');
-    
-    UI.el('dashboardTitle').textContent = tab.textContent;
+    UI.el('dashboardTitle').textContent = tab.textContent.trim();
 
     if (tabKey === 'shared') {
       const shared = await Storage.getSharedBoards();
       AppState.setState(s => ({ ...s, tab: tabKey, sharedBoards: shared }));
     } else if (tabKey === 'groups') {
-      const groups = await Storage.getUserGroups();
+      const groups = await window._GroupsStorage?.getUserGroups() ?? [];
       AppState.setState(s => ({ ...s, tab: tabKey, groups }));
-      GroupsView.render();
+      window._GroupsView?.render();
       UI.el('groupsOverlay')?.classList.add('open');
     } else if (tabKey === 'messages') {
-      const groups = await Storage.getUserGroups();
-      AppState.setState(s => ({ ...s, tab: tabKey, groups: groups }));
-      MessagesView.init();
+      const groups = await window._GroupsStorage?.getUserGroups() ?? [];
+      AppState.setState(s => ({ ...s, tab: tabKey, groups }));
+      window._MessagesView?.init();
+    } else if (tabKey === 'forum') {
+      AppState.setState(s => ({ ...s, tab: tabKey }));
     } else {
       AppState.setState(s => ({ ...s, tab: tabKey }));
     }
@@ -1149,317 +1032,24 @@ const Dashboard = (() => {
   document.getElementById('boardSettingsBtn')?.addEventListener('click', showEditBoardModal);
   document.getElementById('shareBoardFromBoardBtn')?.addEventListener('click', () => {
     const { boardId } = AppState.getState();
-    if (boardId) BoardSharing.open(boardId);
+    if (boardId) window._BoardSharing?.open(boardId);
   });
-  
+
   newBoardClose?.addEventListener('click', hideNewBoardModal);
   newBoardCancel?.addEventListener('click', hideNewBoardModal);
   createBoardBtn?.addEventListener('click', handleBoardSubmit);
-  
   newBoardOverlay?.addEventListener('click', e => { if (e.target === newBoardOverlay) hideNewBoardModal(); });
-  newBoardName?.addEventListener('keydown', e => { if (e.key === 'Enter') handleBoardSubmit(); if (e.key === 'Escape') hideNewBoardModal(); });
-  
-  AppState.subscribe(state => { if (state.view === 'dashboard' || state.view === 'messages') render(); });
+  newBoardName?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') handleBoardSubmit();
+    if (e.key === 'Escape') hideNewBoardModal();
+  });
+
+  AppState.subscribe(state => {
+    if (state.view === 'dashboard' || state.view === 'messages' || state.view === 'forum') render();
+  });
 
   return { render, openBoard };
 })();
-
-/* ═══════════════════════════════════════════════════════════
-   MESSAGES VIEW
-   ═══════════════════════════════════════════════════════════ */
-
-const MessagesView = (() => {
-  let activeGroupId = null;
-  let subscription  = null;
-
-  function init() {
-    const sendBtn = UI.el('sendMessageBtn');
-    const input   = UI.el('messageInput');
-
-    if (sendBtn) {
-      sendBtn.onclick = async () => {
-        const content = input?.value.trim();
-        if (!content || !activeGroupId) return;
-        input.value = '';
-        try { await Storage.sendMessage(activeGroupId, content); }
-        catch (err) { console.error('Send message error:', err); }
-      };
-    }
-
-    // Allow Enter to send, Shift+Enter for newline
-    input?.addEventListener('keydown', e => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        sendBtn?.click();
-      }
-    });
-
-    const createBtn = UI.el('createGroupFromMessagesBtn');
-    if (createBtn) createBtn.onclick = () => openCreateGroupOverlay();
-  }
-
-  function openCreateGroupOverlay() {
-    UI.el('createGroupOverlay')?.classList.add('open');
-  }
-
-  async function selectGroup(groupId, groupName) {
-    activeGroupId = groupId;
-    UI.el('messagesGroupTitle').textContent = groupName;
-    UI.el('messagesInputArea').style.display = 'flex';
-    
-    // Clear and Load
-    UI.el('messagesFeed').innerHTML = '<p class="loading-text">Loading messages...</p>';
-    const msgs = await Storage.getGroupMessages(groupId);
-    renderMessages(msgs.reverse());
-
-    // Subscribe
-    if (subscription) subscription.unsubscribe();
-    subscription = Storage.subscribeToMessages(groupId, async () => {
-      const updated = await Storage.getGroupMessages(groupId);
-      renderMessages(updated.reverse());
-    });
-  }
-
-  function renderMessages(msgs) {
-    const feed = UI.el('messagesFeed');
-    const { profile } = AppState.getState();
-    const myId = profile?.id || Auth.getUserId();
-    feed.innerHTML = msgs.map(m => {
-      const isMe = m.sender_id === myId;
-      const initial = (m.sender_name || '?').charAt(0).toUpperCase();
-      return `
-        <div class="message ${isMe ? 'message-mine' : ''}">
-          ${!isMe ? `<div class="message-avatar" title="${Render.esc(m.sender_name || '')}">${Render.esc(initial)}</div>` : ''}
-          <div class="message-bubble-wrap">
-            ${!isMe ? `<div class="message-meta">${Render.esc(m.sender_name || 'Unknown')}</div>` : ''}
-            <div class="message-bubble">${Render.esc(m.content)}</div>
-            <div class="message-time">${new Date(m.created_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</div>
-          </div>
-          ${isMe ? `<div class="message-avatar message-avatar-mine" title="You">${Render.esc(initial)}</div>` : ''}
-        </div>
-      `;
-    }).join('');
-    feed.scrollTop = feed.scrollHeight;
-  }
-
-  function render() {
-    const { groups } = AppState.getState();
-    const list = UI.el('messageGroupsList');
-    list.innerHTML = groups.map(g => `
-      <button class="message-group-btn ${activeGroupId === g.id ? 'active' : ''}" data-id="${g.id}">
-        ${Render.esc(g.name)}
-      </button>
-    `).join('');
-
-    list.querySelectorAll('.message-group-btn').forEach(btn => {
-      btn.onclick = () => selectGroup(btn.dataset.id, btn.textContent.trim());
-    });
-  }
-
-  return { init, render };
-})();
-
-/* ═══════════════════════════════════════════════════════════
-   SHARING MODAL
-   ═══════════════════════════════════════════════════════════ */
-
-const BoardSharing = (() => {
-  const overlay = UI.el('shareBoardOverlay');
-  const emailIn = UI.el('shareEmail');
-  const permIn  = UI.el('sharePermission');
-  const list    = UI.el('shareList');
-  let activeBoardId = null;
-
-  async function open(boardId) {
-    activeBoardId = boardId;
-    overlay.classList.add('open');
-    loadShares();
-  }
-
-  async function loadShares() {
-    const shares = await Storage.getBoardShares(activeBoardId);
-    if (!shares || shares.length === 0) {
-      list.innerHTML = `<div style="font-size:0.82rem;color:var(--ink-soft);padding:8px 0;">Not shared with anyone yet.</div>`;
-      return;
-    }
-    list.innerHTML = shares.map(s => `
-      <div class="share-item">
-        <div>
-          <div class="share-item-email">${Render.esc(s.display_name || s.email || 'Unknown')}</div>
-          <div class="share-item-perm">${Render.esc(s.email || '')} · ${s.permission_level}</div>
-        </div>
-        <button class="share-item-remove" data-share-id="${s.id}">✕</button>
-      </div>
-    `).join('');
-    list.querySelectorAll('[data-share-id]').forEach(btn => {
-      btn.onclick = () => BoardSharing.remove(btn.dataset.shareId);
-    });
-  }
-
-  UI.el('shareBoardBtn').onclick = async () => {
-    const email = emailIn.value.trim();
-    if (!email) return;
-    const btn = UI.el('shareBoardBtn');
-    btn.textContent = '…';
-    btn.disabled = true;
-    try {
-      await Storage.shareBoard(activeBoardId, email, permIn.value);
-      emailIn.value = '';
-      await loadShares();
-      btn.textContent = 'Share';
-    } catch (err) {
-      btn.textContent = 'Error';
-      // Show error inline instead of silently failing
-      list.innerHTML = `<div style="font-size:0.82rem;color:var(--red);padding:8px 0;">${err.message || 'Could not share board. Make sure the email has a TaskDeck account.'}</div>`;
-      setTimeout(() => { btn.textContent = 'Share'; }, 2000);
-    }
-    btn.disabled = false;
-  };
-
-  UI.el('shareBoardClose').onclick = () => overlay.classList.remove('open');
-
-  return { open, remove: async (id) => { await Storage.removeShare(id); loadShares(); } };
-})();
-window.BoardSharing = BoardSharing; // Expose for inline onclick
-
-/* ═══════════════════════════════════════════════════════════
-   GROUPS VIEW
-   ═══════════════════════════════════════════════════════════ */
-
-const GroupsView = (() => {
-  function render() {
-    const { groups } = AppState.getState();
-    const list = UI.el('groupsList');
-    if (!list) return;
-
-    if (!groups || groups.length === 0) {
-      list.innerHTML = `<div class="empty-state"><div class="empty-state-text">No groups yet.<br>Create one to collaborate with others.</div></div>`;
-      return;
-    }
-
-    list.innerHTML = groups.map(g => `
-      <div class="group-item" data-group-id="${g.id}">
-        <div class="group-item-header">
-          <div>
-            <div class="share-item-email" style="font-weight:600;">${Render.esc(g.name)}</div>
-            <div class="share-item-perm">${g.description ? Render.esc(g.description) + ' · ' : ''}${g.role}</div>
-          </div>
-          <div style="display:flex;gap:6px;">
-            <button class="btn-ghost" style="font-size:12px;" data-group-add-member="${g.id}" data-group-name="${Render.esc(g.name)}">+ Member</button>
-            <button class="btn-ghost" style="font-size:12px;" data-group-show-members="${g.id}">Members ▾</button>
-          </div>
-        </div>
-        <div class="group-members-list" id="members-${g.id}" style="display:none;margin-top:8px;padding:8px;background:var(--canvas);border-radius:var(--radius-sm);">
-          <div class="members-loading" style="font-size:0.8rem;color:var(--ink-soft);">Loading…</div>
-        </div>
-      </div>
-    `).join('');
-
-    // Wire member buttons
-    list.querySelectorAll('[data-group-add-member]').forEach(btn => {
-      btn.onclick = () => openAddMember(btn.dataset.groupAddMember, btn.dataset.groupName);
-    });
-    list.querySelectorAll('[data-group-show-members]').forEach(btn => {
-      btn.onclick = () => toggleMembers(btn.dataset.groupShowMembers, btn);
-    });
-  }
-
-  async function toggleMembers(groupId, btn) {
-    const panel = UI.el(`members-${groupId}`);
-    if (!panel) return;
-    const isOpen = panel.style.display !== 'none';
-    if (isOpen) {
-      panel.style.display = 'none';
-      btn.textContent = 'Members ▾';
-      return;
-    }
-    panel.style.display = 'block';
-    btn.textContent = 'Members ▴';
-    panel.innerHTML = '<div style="font-size:0.8rem;color:var(--ink-soft);">Loading…</div>';
-    try {
-      const members = await Storage.getGroupMembers(groupId);
-      if (!members || members.length === 0) {
-        panel.innerHTML = '<div style="font-size:0.8rem;color:var(--ink-soft);">No members yet.</div>';
-        return;
-      }
-      panel.innerHTML = members.map(m => `
-        <div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--ink-faint);">
-          <div style="width:26px;height:26px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:0.75rem;color:#fff;font-weight:600;">
-            ${(m.display_name || m.email || '?').charAt(0).toUpperCase()}
-          </div>
-          <div>
-            <div style="font-size:0.83rem;font-weight:500;">${Render.esc(m.display_name || m.email || 'Unknown')}</div>
-            <div style="font-size:0.73rem;color:var(--ink-soft);">${Render.esc(m.email || '')} · ${m.role}</div>
-          </div>
-        </div>
-      `).join('');
-    } catch (err) {
-      panel.innerHTML = `<div style="font-size:0.8rem;color:var(--red);">Error: ${err.message}</div>`;
-    }
-  }
-
-  function openAddMember(groupId, groupName) {
-    const email = prompt(`Add a member to "${groupName}" by email:`);
-    if (!email?.trim()) return;
-    Storage.addGroupMember(groupId, email.trim())
-      .then(() => {
-        alert('Member added!');
-        // Refresh the members panel if open
-        const panel = UI.el(`members-${groupId}`);
-        if (panel && panel.style.display !== 'none') {
-          const btn = document.querySelector(`[data-group-show-members="${groupId}"]`);
-          if (btn) toggleMembers(groupId, btn);
-        }
-      })
-      .catch(err => alert('Error: ' + (err.message || err)));
-  }
-
-  // Wire Create Group button on groups overlay
-  document.getElementById('createGroupBtn')?.addEventListener('click', () => {
-    UI.el('groupsOverlay')?.classList.remove('open');
-    UI.el('createGroupOverlay')?.classList.add('open');
-  });
-
-  // Wire Create Group confirm button
-  document.getElementById('confirmCreateGroupBtn')?.addEventListener('click', async () => {
-    const name = UI.el('groupName')?.value.trim();
-    const desc = UI.el('groupDescription')?.value.trim() || null;
-    if (!name) { UI.el('groupName')?.focus(); return; }
-    const btn = UI.el('confirmCreateGroupBtn');
-    btn.textContent = '…';
-    try {
-      await Storage.createGroup(name, desc);
-      const groups = await Storage.getUserGroups();
-      AppState.setState(s => ({ ...s, groups }));
-      UI.el('createGroupOverlay')?.classList.remove('open');
-      UI.el('groupsOverlay')?.classList.add('open');
-      UI.el('groupName').value = '';
-      UI.el('groupDescription').value = '';
-      btn.textContent = 'Create';
-      render();
-    } catch (err) {
-      console.error(err);
-      btn.textContent = 'Error';
-      setTimeout(() => { btn.textContent = 'Create'; }, 1800);
-    }
-  });
-
-  // Close buttons
-  document.getElementById('groupsClose')?.addEventListener('click', () => UI.el('groupsOverlay')?.classList.remove('open'));
-  document.getElementById('createGroupClose')?.addEventListener('click', () => UI.el('createGroupOverlay')?.classList.remove('open'));
-  document.getElementById('createGroupCancelBtn')?.addEventListener('click', () => UI.el('createGroupOverlay')?.classList.remove('open'));
-
-  // Close on overlay-backdrop click
-  document.getElementById('groupsOverlay')?.addEventListener('click', e => {
-    if (e.target === UI.el('groupsOverlay')) UI.el('groupsOverlay').classList.remove('open');
-  });
-  document.getElementById('createGroupOverlay')?.addEventListener('click', e => {
-    if (e.target === UI.el('createGroupOverlay')) UI.el('createGroupOverlay').classList.remove('open');
-  });
-
-  return { render, openAddMember };
-})();
-window.GroupsView = GroupsView; // Expose for inline onclick
 
 /* ═══════════════════════════════════════════════════════════
    BOARD
@@ -2155,6 +1745,42 @@ const SMS = (() => {
   return { send, normalizeUS, dispatchCardReminders, formatTime12 };
 })();
 
+
+/* ═══════════════════════════════════════════════════════════
+   UPDATED UI HELPERS — add showForum / showMessages
+   ═══════════════════════════════════════════════════════════ */
+
+// Patch UI with forum support (appended after UI object definition above)
+UI.showForum = function() {
+  this.el('dashboard').style.display      = 'none';
+  this.el('boardContainer').style.display = 'none';
+  this.el('messagesView').style.display   = 'none';
+  this.el('forumView').style.display      = '';
+  this.el('headerTabs').style.display     = '';
+  this.el('syncStatus').style.display     = 'none';
+  this.el('shareBoardFromBoardBtn') && (this.el('shareBoardFromBoardBtn').style.display = 'none');
+};
+
+// Patch showDashboard to also hide forumView
+const _origShowDashboard = UI.showDashboard.bind(UI);
+UI.showDashboard = function() {
+  _origShowDashboard();
+  const fv = this.el('forumView');
+  if (fv) fv.style.display = 'none';
+};
+
+// Patch showMessages to also hide forumView
+const _origShowMessages = UI.showMessages.bind(UI);
+UI.showMessages = function() {
+  _origShowMessages();
+  const fv = this.el('forumView');
+  if (fv) fv.style.display = 'none';
+};
+
+/* ═══════════════════════════════════════════════════════════
+   BOOT
+   ═══════════════════════════════════════════════════════════ */
+
 let isAppInitialized = false;
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -2165,9 +1791,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   UI.setLoading('Starting TaskDeck…', 10);
 
   // Home button → back to dashboard
-  document.getElementById('logoHomeBtn')?.addEventListener('click', (e) => {
+  document.getElementById('logoHomeBtn')?.addEventListener('click', e => {
     e.preventDefault();
-    AppState.setState(s => ({ ...s, view: 'dashboard' }));
+    AppState.setState(s => ({ ...s, view: 'dashboard', tab: 'boards' }));
+    document.querySelectorAll('.header-tab').forEach(t =>
+      t.classList.toggle('active', t.dataset.tab === 'boards')
+    );
+    UI.el('dashboardTitle').textContent = 'My Boards';
     UI.showDashboard();
     Dashboard.render();
   });
@@ -2178,7 +1808,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       isAppInitialized = true;
       UI.hideAuth();
 
-      // Retry wrapper — transient network issues shouldn't kill the session
       async function withRetry(label, pct, fn, retries = 3) {
         for (let i = 0; i < retries; i++) {
           try {
@@ -2187,15 +1816,12 @@ document.addEventListener('DOMContentLoaded', async () => {
           } catch (err) {
             if (i === retries - 1) throw err;
             UI.setLoading(`${label} (retrying…)`, pct);
-            await new Promise(r => setTimeout(r, 1000 * (i + 1))); // 1s, 2s backoff
+            await new Promise(r => setTimeout(r, 1000 * (i + 1)));
           }
         }
       }
 
       try {
-        // Always upsert the profile — avoids the race condition where the
-        // trigger-created row isn't visible yet, and handles new Google users
-        // whose profile may not exist yet.
         await withRetry('Syncing profile…', 40, () => {
           const displayName =
             user.user_metadata?.display_name ||
@@ -2207,7 +1833,6 @@ document.addEventListener('DOMContentLoaded', async () => {
           });
         });
 
-        // Fetch the full profile row after upsert
         const profileRow = await withRetry('Loading profile…', 55, () =>
           Storage.getProfile(user.id)
         );
@@ -2215,12 +1840,10 @@ document.addEventListener('DOMContentLoaded', async () => {
           ? { ...profileRow, email: user.email }
           : { id: user.id, email: user.email, display_name: '' };
 
-        // Fetch boards
         const boards = await withRetry('Syncing boards…', 75, () =>
           Storage.getBoards(user.id)
         );
 
-        // Auto-create a default "My First Board" for brand-new users
         if (boards.length === 0) {
           try {
             UI.setLoading('Creating your first board…', 82);
@@ -2230,20 +1853,39 @@ document.addEventListener('DOMContentLoaded', async () => {
           } catch (e) { console.warn('Could not create default board:', e); }
         }
 
-        // Also fetch shared boards so the dashboard has them ready
         let sharedBoards = [];
         try { sharedBoards = await Storage.getSharedBoards(); } catch (_) {}
 
         AppState.setState(() => ({
           view:         'dashboard',
+          tab:          'boards',
           profile,
           boards,
           sharedBoards,
+          groups:       [],
           boardId:      null,
           boardTitle:   '',
           boardColor:   '#C97D4E',
           lists:        [],
+          searchQuery:  '',
+          sortOrder:    'recent',
         }), true);
+
+        /* ── Init feature modules ── */
+        const { MessagesView, GroupsView, Forum, Storage: MsgStore } =
+          createMessagingModule(sb, AppState, Auth, Render, UI);
+        const { BoardSharing } =
+          createSharingModule(sb, AppState, Render, UI);
+
+        // Expose on window so Dashboard + Board can call them
+        window._MessagesView  = MessagesView;
+        window._GroupsView    = GroupsView;
+        window._Forum         = Forum;
+        window._BoardSharing  = BoardSharing;
+        window._GroupsStorage = MsgStore;   // getUserGroups, createGroup, etc.
+
+        MessagesView.init();
+        Forum.init();
 
         UI.setProfile(profile);
         UI.setLoading('Ready!', 100);
@@ -2253,13 +1895,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         Dashboard.render();
 
       } catch (err) {
-        // Don't sign the user out — a network blip shouldn't destroy their session.
-        // Show a retry button instead.
         console.error('Boot error:', err);
         isAppInitialized = false;
         UI.setLoading('Could not load your data.', 100);
 
-        // Swap loading text for a retry button
         const loadingInner = document.querySelector('.loading-inner');
         if (loadingInner) {
           const retryBtn = document.createElement('button');
@@ -2267,7 +1906,6 @@ document.addEventListener('DOMContentLoaded', async () => {
           retryBtn.className   = 'btn-primary';
           retryBtn.style.cssText = 'margin-top:16px;';
           retryBtn.onclick = () => window.location.reload();
-          // Remove any existing retry button first
           loadingInner.querySelector('.btn-primary')?.remove();
           loadingInner.appendChild(retryBtn);
         }
@@ -2277,6 +1915,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       isAppInitialized = false;
       AppState.setState(() => ({
         view:        'dashboard',
+        tab:         'boards',
         profile:     null,
         boards:      [],
         boardId:     null,
@@ -2285,6 +1924,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         boardTitle:  '',
         boardColor:  '#C97D4E',
         lists:       [],
+        groups:      [],
       }), true);
       UI.hideLoading();
       UI.hideApp();

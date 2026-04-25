@@ -1160,3 +1160,203 @@ button { font-family: var(--font-sans); }
   .boards-grid { grid-template-columns: 1fr 1fr; }
   .list { width: 216px; }
 }
+/* ═══════════════════════════════════════════════════════════
+   FORUM
+   ═══════════════════════════════════════════════════════════ */
+
+.forum-view {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.forum-inner {
+  width: 100%;
+  max-width: 680px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.forum-compose {
+  background: var(--surface);
+  border: 1px solid var(--ink-faint);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.forum-compose-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.forum-compose-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.forum-compose-hint {
+  font-size: 0.73rem;
+  color: var(--ink-soft);
+}
+
+.forum-input {
+  width: 100%;
+  background: var(--canvas);
+  border: 1px solid var(--ink-faint);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.9rem;
+  padding: 10px 12px;
+  resize: vertical;
+  line-height: 1.5;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.forum-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.forum-compose-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+
+.forum-char-count {
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+
+.forum-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.forum-post {
+  display: flex;
+  gap: 12px;
+  background: var(--surface);
+  border: 1px solid var(--ink-faint);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  animation: fadeInUp 0.2s ease;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.forum-post-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.forum-post-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.forum-post-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.forum-post-name {
+  font-size: 0.83rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.forum-post-time {
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+}
+
+.forum-post-content {
+  font-size: 0.9rem;
+  color: var(--ink);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.forum-load-more {
+  align-self: center;
+  margin-top: 4px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MESSAGING — sidebar group buttons (updated)
+   ═══════════════════════════════════════════════════════════ */
+
+.msg-group-initial {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.msg-group-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.message-group-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 0.86rem;
+  transition: background 0.12s;
+}
+.message-group-btn:hover { background: var(--canvas); }
+.message-group-btn.active { background: var(--ink-faint); font-weight: 600; }
+
+/* ── Share modal error ── */
+#shareBoardError {
+  font-size: 0.8rem;
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--red) 30%, transparent);
+}
