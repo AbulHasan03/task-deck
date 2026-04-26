@@ -1,7 +1,7 @@
 name: Deploy to GitHub Pages
 on:
   push:
-    branches: ["messaging"] #change back to main after merge
+    branches: ["main"]
   workflow_dispatch:
 permissions:
   contents: read
