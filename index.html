@@ -149,7 +149,9 @@
                   <input type="tel" class="profile-name-input" id="profilePhoneInput" placeholder="+12125551234" />
                   <button class="btn-profile-save" id="savePhoneBtn">Save</button>
                 </div>
-                <div class="profile-phone-hint">US numbers only · format: +12125551234</div>
+                <div class="profile-phone-hint">US numbers only &middot; format: +12125551234</div>
+                <div id="phoneVerifiedBadge" class="phone-verified-badge" style="display:none;"></div>
+                <button class="btn-ghost" id="verifyPhoneBtn" style="margin-top:6px;font-size:0.78rem;display:none;">Verify number</button>
               </div>
             </div>
 
@@ -343,16 +345,22 @@
         </button>
       </div>
       <div class="modal-body">
-        <p class="sms-setup-desc">Enter your phone number to receive text message reminders for your tasks.</p>
+        <p class="sms-setup-desc">Enter your US phone number to receive text reminders. We&#39;ll send a verification code first.</p>
         <div class="modal-section">
           <label class="modal-label">Phone Number</label>
           <input type="tel" class="modal-input" id="smsSetupPhone" placeholder="+12125551234" />
-          <div class="profile-phone-hint" style="margin-top:4px;">International format · e.g. +12125551234</div>
+          <div class="profile-phone-hint" style="margin-top:4px;">US numbers only &middot; e.g. +12125551234</div>
         </div>
+        <div id="smsVerifyRow" style="display:none;" class="modal-section">
+          <label class="modal-label">Verification Code</label>
+          <input type="text" class="modal-input" id="smsVerifyCode" placeholder="6-digit code from your text" maxlength="6" inputmode="numeric" />
+        </div>
+        <div id="smsSetupStatus" class="sms-setup-status" style="display:none;"></div>
       </div>
       <div class="modal-footer">
         <button class="btn-ghost" id="smsSetupSkip">Skip for now</button>
-        <button class="btn-primary" id="smsSetupSave">Save &amp; Enable</button>
+        <button class="btn-primary" id="smsVerifyBtn" style="display:none;">Confirm Code</button>
+        <button class="btn-primary" id="smsSetupSave">Send Code</button>
       </div>
     </div>
   </div>

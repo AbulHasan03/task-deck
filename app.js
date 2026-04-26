@@ -165,6 +165,20 @@ const UI = {
       toggle.setAttribute('aria-pressed', smsOn ? 'true' : 'false');
     }
     if (phoneWrap) phoneWrap.style.display = smsOn ? '' : 'none';
+
+    // Show verified / unverified badge next to phone input
+    const verifiedBadge = document.getElementById('phoneVerifiedBadge');
+    if (verifiedBadge) {
+      const isVerified = !!(profile && profile.phone_verified && profile.phone);
+      verifiedBadge.textContent   = isVerified ? '\u2713 Verified' : (profile && profile.phone ? 'Not verified' : '');
+      verifiedBadge.className     = 'phone-verified-badge' + (isVerified ? ' verified' : ' unverified');
+      verifiedBadge.style.display = (profile && profile.phone) ? '' : 'none';
+    }
+    const verifyBtn = document.getElementById('verifyPhoneBtn');
+    if (verifyBtn) {
+      const needsVerify = !!(profile && profile.phone && !profile.phone_verified);
+      verifyBtn.style.display = needsVerify ? '' : 'none';
+    }
   },
 };
 
@@ -454,6 +468,30 @@ const Storage = {
   async createForumPost(content, userId) {
     const { error } = await sb.from('forum_posts').insert({ content: content, user_id: userId });
     if (error) throw error;
+  },
+
+  async updateForumPost(postId, content) {
+    const { error } = await sb.from('forum_posts')
+      .update({ content: content })
+      .eq('id', postId).eq('user_id', Auth.getUserId());
+    if (error) throw error;
+  },
+
+  async deleteForumPost(postId) {
+    const { error } = await sb.from('forum_posts')
+      .delete().eq('id', postId).eq('user_id', Auth.getUserId());
+    if (error) throw error;
+  },
+
+  // Boards the current user has shared with others (shown in Shared tab alongside received shares)
+  async getMySharedBoards() {
+    const userId = Auth.getUserId();
+    const { data, error } = await sb
+      .from('board_shares')
+      .select('board_id, permission_level, profiles!shared_with(display_name, email), boards!board_id(id, title, color, updated_at, is_pinned)')
+      .eq('boards.user_id', userId);
+    if (error) throw error;
+    return data ?? [];
   },
 };
 
@@ -1107,6 +1145,8 @@ const Dashboard = (() => {
 const MessagesView = (() => {
   let activeGroupId = null;
   let subscription  = null;
+  // Track IDs we've already rendered so subscription doesn't double-add
+  const renderedIds = new Set();
 
   function init() {
     const sendBtn = UI.el('sendMessageBtn');
@@ -1116,6 +1156,16 @@ const MessagesView = (() => {
         const content = input ? input.value.trim() : '';
         if (!content || !activeGroupId) return;
         if (input) input.value = '';
+        // Optimistic local append immediately
+        const state  = AppState.getState();
+        const myId   = (state.profile && state.profile.id) || Auth.getUserId();
+        const myName = (state.profile && state.profile.display_name) || 'You';
+        const tempId = 'temp-' + Date.now();
+        appendMessageEl({
+          id: tempId, sender_id: myId, sender_name: myName,
+          content: content, created_at: new Date().toISOString(),
+        }, myId);
+        renderedIds.add(tempId);
         try { await Storage.sendMessage(activeGroupId, content); }
         catch (err) { console.error('Send message error:', err); }
       };
@@ -1133,6 +1183,7 @@ const MessagesView = (() => {
 
   async function selectGroup(groupId, groupName) {
     activeGroupId = groupId;
+    renderedIds.clear();
     const titleEl = UI.el('messagesGroupTitle');
     const areaEl  = UI.el('messagesInputArea');
     const feedEl  = UI.el('messagesFeed');
@@ -1140,32 +1191,54 @@ const MessagesView = (() => {
     if (areaEl)  areaEl.style.display = 'flex';
     if (feedEl)  feedEl.innerHTML = '<p class="loading-text">Loading messages\u2026</p>';
     const msgs = await Storage.getGroupMessages(groupId);
-    renderMessages(msgs.reverse());
+    if (feedEl) feedEl.innerHTML = '';
+    const state = AppState.getState();
+    const myId  = (state.profile && state.profile.id) || Auth.getUserId();
+    msgs.reverse().forEach(function(m) {
+      appendMessageEl(m, myId);
+      renderedIds.add(m.id);
+    });
     if (subscription) subscription.unsubscribe();
-    subscription = Storage.subscribeToMessages(groupId, async function() {
-      const updated = await Storage.getGroupMessages(groupId);
-      renderMessages(updated.reverse());
+    subscription = Storage.subscribeToMessages(groupId, function(newMsg) {
+      // Only append if we haven't rendered this ID yet (avoids echo of our own sends)
+      if (renderedIds.has(newMsg.id)) return;
+      renderedIds.add(newMsg.id);
+      const st   = AppState.getState();
+      const myId = (st.profile && st.profile.id) || Auth.getUserId();
+      // Remove any temp placeholder with same content+sender if it was ours
+      if (newMsg.sender_id === myId) {
+        const feed = UI.el('messagesFeed');
+        if (feed) {
+          const temps = feed.querySelectorAll('[data-temp]');
+          temps.forEach(function(t) {
+            if (t.querySelector('.message-bubble') &&
+                t.querySelector('.message-bubble').textContent === newMsg.content) {
+              t.remove();
+            }
+          });
+        }
+      }
+      appendMessageEl(newMsg, myId);
     });
   }
 
-  function renderMessages(msgs) {
-    const feed  = UI.el('messagesFeed');
+  function appendMessageEl(m, myId) {
+    const feed = UI.el('messagesFeed');
     if (!feed) return;
-    const state = AppState.getState();
-    const myId  = (state.profile && state.profile.id) || Auth.getUserId();
-    feed.innerHTML = msgs.map(function(m) {
-      const isMe    = m.sender_id === myId;
-      const initial = (m.sender_name || '?').charAt(0).toUpperCase();
-      return '<div class="message ' + (isMe ? 'message-mine' : '') + '">' +
-        (!isMe ? '<div class="message-avatar" title="' + Render.esc(m.sender_name || '') + '">' + Render.esc(initial) + '</div>' : '') +
-        '<div class="message-bubble-wrap">' +
-          (!isMe ? '<div class="message-meta">' + Render.esc(m.sender_name || 'Unknown') + '</div>' : '') +
-          '<div class="message-bubble">' + Render.esc(m.content) + '</div>' +
-          '<div class="message-time">' + new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '</div>' +
-        '</div>' +
-        (isMe ? '<div class="message-avatar message-avatar-mine" title="You">' + Render.esc(initial) + '</div>' : '') +
-        '</div>';
-    }).join('');
+    const isMe    = m.sender_id === myId;
+    const initial = (m.sender_name || '?').charAt(0).toUpperCase();
+    const el = document.createElement('div');
+    el.className = 'message' + (isMe ? ' message-mine' : '');
+    if (m.id && String(m.id).startsWith('temp-')) el.dataset.temp = '1';
+    el.innerHTML =
+      (!isMe ? '<div class="message-avatar" title="' + Render.esc(m.sender_name || '') + '">' + Render.esc(initial) + '</div>' : '') +
+      '<div class="message-bubble-wrap">' +
+        (!isMe ? '<div class="message-meta">' + Render.esc(m.sender_name || 'Unknown') + '</div>' : '') +
+        '<div class="message-bubble">' + Render.esc(m.content) + '</div>' +
+        '<div class="message-time">' + new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '</div>' +
+      '</div>' +
+      (isMe ? '<div class="message-avatar message-avatar-mine" title="You">' + Render.esc(initial) + '</div>' : '');
+    feed.appendChild(el);
     feed.scrollTop = feed.scrollHeight;
   }
 
@@ -1464,23 +1537,10 @@ const Forum = (() => {
         return;
       }
 
+      const state = AppState.getState();
+      const myId  = (state.profile && state.profile.id) || Auth.getUserId();
       posts.forEach(function(post) {
-        const el      = document.createElement('div');
-        el.className  = 'forum-post';
-        const name    = (post.profiles && post.profiles.display_name) || 'Anonymous';
-        const initial = name.charAt(0).toUpperCase();
-        const color   = (post.profiles && post.profiles.avatar_color) || 'var(--accent)';
-        const ts      = new Date(post.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-        el.innerHTML =
-          '<div class="forum-post-avatar" style="background:' + color + ';">' + Render.esc(initial) + '</div>' +
-          '<div class="forum-post-body">' +
-            '<div class="forum-post-meta">' +
-              '<span class="forum-post-name">' + Render.esc(name) + '</span>' +
-              '<span class="forum-post-time">' + ts + '</span>' +
-            '</div>' +
-            '<div class="forum-post-content">' + Render.esc(post.content) + '</div>' +
-          '</div>';
-        feed.appendChild(el);
+        feed.appendChild(buildPostEl(post, myId));
       });
 
       currentPage++;
@@ -1489,6 +1549,98 @@ const Forum = (() => {
     } catch (err) {
       if (reset) feed.innerHTML = '<p class="loading-text" style="color:var(--red);">Error loading posts.</p>';
       console.error('Forum load error:', err);
+    }
+  }
+
+  function buildPostEl(post, myId) {
+    const el      = document.createElement('div');
+    el.className  = 'forum-post';
+    el.dataset.postId = post.id;
+    const name    = (post.profiles && post.profiles.display_name) || 'Anonymous';
+    const initial = name.charAt(0).toUpperCase();
+    const color   = (post.profiles && post.profiles.avatar_color) || 'var(--accent)';
+    const ts      = new Date(post.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    const isOwner = post.user_id === myId;
+    el.innerHTML =
+      '<div class="forum-post-avatar" style="background:' + color + ';">' + Render.esc(initial) + '</div>' +
+      '<div class="forum-post-body">' +
+        '<div class="forum-post-meta">' +
+          '<span class="forum-post-name">' + Render.esc(name) + '</span>' +
+          '<span class="forum-post-time">' + ts + '</span>' +
+          (isOwner ?
+            '<span class="forum-post-actions">' +
+              '<button class="forum-post-edit" title="Edit">Edit</button>' +
+              '<button class="forum-post-delete" title="Delete">Delete</button>' +
+            '</span>' : '') +
+        '</div>' +
+        '<div class="forum-post-content">' + Render.esc(post.content) + '</div>' +
+      '</div>';
+    if (isOwner) {
+      el.querySelector('.forum-post-edit').addEventListener('click', function() { startEdit(el, post); });
+      el.querySelector('.forum-post-delete').addEventListener('click', function() { deletePost(el, post.id); });
+    }
+    return el;
+  }
+
+  function startEdit(el, post) {
+    const contentEl = el.querySelector('.forum-post-content');
+    if (!contentEl) return;
+    const original = post.content;
+    const ta = document.createElement('textarea');
+    ta.className = 'forum-edit-input';
+    ta.value     = original;
+    ta.rows       = 3;
+    ta.maxLength  = 1000;
+    const actions = document.createElement('div');
+    actions.className = 'forum-edit-actions';
+    const saveBtn   = document.createElement('button');
+    saveBtn.className = 'btn-primary';
+    saveBtn.textContent = 'Save';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'btn-ghost';
+    cancelBtn.textContent = 'Cancel';
+    actions.appendChild(cancelBtn);
+    actions.appendChild(saveBtn);
+    contentEl.replaceWith(ta);
+    ta.after(actions);
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+    cancelBtn.addEventListener('click', function() {
+      const newContentEl = document.createElement('div');
+      newContentEl.className = 'forum-post-content';
+      newContentEl.textContent = original;
+      ta.replaceWith(newContentEl);
+      actions.remove();
+    });
+    saveBtn.addEventListener('click', async function() {
+      const newContent = ta.value.trim();
+      if (!newContent) return;
+      saveBtn.textContent = '\u2026';
+      saveBtn.disabled = true;
+      try {
+        await Storage.updateForumPost(post.id, newContent);
+        post.content = newContent;
+        const newContentEl = document.createElement('div');
+        newContentEl.className = 'forum-post-content';
+        newContentEl.textContent = newContent;
+        ta.replaceWith(newContentEl);
+        actions.remove();
+      } catch (err) {
+        console.error('Edit error:', err);
+        saveBtn.textContent = 'Error';
+        setTimeout(function() { saveBtn.textContent = 'Save'; saveBtn.disabled = false; }, 1800);
+      }
+    });
+  }
+
+  async function deletePost(el, postId) {
+    if (!confirm('Delete this post?')) return;
+    try {
+      await Storage.deleteForumPost(postId);
+      el.classList.add('forum-post-deleting');
+      setTimeout(function() { el.remove(); }, 260);
+    } catch (err) {
+      console.error('Delete error:', err);
     }
   }
 
@@ -1856,16 +2008,39 @@ const Board = (() => {
    ═══════════════════════════════════════════════════════════ */
 
 const SmsSetup = (() => {
-  const overlay  = document.getElementById('smsSetupOverlay');
-  const phoneEl  = document.getElementById('smsSetupPhone');
-  const saveBtn  = document.getElementById('smsSetupSave');
-  const skipBtn  = document.getElementById('smsSetupSkip');
-  const closeBtn = document.getElementById('smsSetupClose');
+  const overlay   = document.getElementById('smsSetupOverlay');
+  const phoneEl   = document.getElementById('smsSetupPhone');
+  const saveBtn   = document.getElementById('smsSetupSave');
+  const skipBtn   = document.getElementById('smsSetupSkip');
+  const closeBtn  = document.getElementById('smsSetupClose');
+  const verifyRow = document.getElementById('smsVerifyRow');
+  const codeEl    = document.getElementById('smsVerifyCode');
+  const verifyBtn = document.getElementById('smsVerifyBtn');
+  const statusEl  = document.getElementById('smsSetupStatus');
+
+  let pendingPhone = null;
+  let pendingCode  = null;
+
+  function setStatus(msg, isError) {
+    if (!statusEl) return;
+    statusEl.textContent   = msg;
+    statusEl.style.display = msg ? '' : 'none';
+    statusEl.style.color   = isError ? 'var(--red)' : 'var(--green)';
+  }
 
   function open() {
     if (!overlay) return;
     const profile = AppState.getState().profile;
     if (phoneEl) phoneEl.value = (profile && profile.phone) || '';
+    if (verifyRow) verifyRow.style.display = 'none';
+    if (codeEl) codeEl.value = '';
+    setStatus('', false);
+    pendingPhone = null; pendingCode = null;
+    // Show verified badge if already verified
+    const verified = profile && profile.phone_verified;
+    if (statusEl && verified) {
+      setStatus('\u2713 Phone verified — reminders are active', false);
+    }
     overlay.classList.add('open');
     if (phoneEl) phoneEl.focus();
     document.body.style.overflow = 'hidden';
@@ -1874,41 +2049,84 @@ const SmsSetup = (() => {
   function close() {
     if (overlay) overlay.classList.remove('open');
     document.body.style.overflow = '';
+    pendingPhone = null; pendingCode = null;
   }
 
-  async function saveAndEnable() {
+  // Step 1: send a verification SMS with a random 6-digit code
+  async function sendCode() {
     const raw   = phoneEl ? phoneEl.value.trim() : '';
     const phone = SMS.normalizeUS(raw);
     if (!raw) { if (phoneEl) phoneEl.focus(); return; }
     if (!phone) {
-      if (saveBtn) saveBtn.textContent = 'Bad number';
-      if (phoneEl) phoneEl.style.borderColor = 'var(--red, #e55)';
-      setTimeout(function() { if (saveBtn) saveBtn.textContent = 'Save & Enable'; if (phoneEl) phoneEl.style.borderColor = ''; }, 2000);
+      setStatus('Invalid number. Use format +12125551234', true);
       return;
     }
-    const userId = Auth.getUserId();
-    if (saveBtn) saveBtn.textContent = '\u2026';
+    if (saveBtn) { saveBtn.textContent = 'Sending\u2026'; saveBtn.disabled = true; }
+    setStatus('', false);
+    // Generate 6-digit code
+    pendingCode  = String(Math.floor(100000 + Math.random() * 900000));
+    pendingPhone = phone;
+    const msg = 'TaskDeck verification code: ' + pendingCode;
     try {
-      await Storage.upsertProfile(userId, { phone: phone, sms_enabled: true });
-      AppState.setState(function(s) {
-        if (s.profile) { s.profile.phone = phone; s.profile.sms_enabled = true; }
-        return s;
-      });
-      if (phoneEl) phoneEl.value = phone;
-      UI.setProfile(AppState.getState().profile);
-      close();
+      const result = await SMS.send(phone, msg);
+      if (result.ok === false && result.reason !== 'network_error') {
+        setStatus('Could not send SMS. Check the number and try again.', true);
+        pendingCode = null; pendingPhone = null;
+        if (saveBtn) { saveBtn.textContent = 'Send Code'; saveBtn.disabled = false; }
+        return;
+      }
+      // Show verify step
+      if (verifyRow) verifyRow.style.display = '';
+      if (codeEl) { codeEl.value = ''; codeEl.focus(); }
+      setStatus('Code sent! Check your messages and enter it below.', false);
+      if (saveBtn) { saveBtn.textContent = 'Resend Code'; saveBtn.disabled = false; }
     } catch (err) {
       console.error(err);
-      if (saveBtn) saveBtn.textContent = 'Error';
-      setTimeout(function() { if (saveBtn) saveBtn.textContent = 'Save & Enable'; }, 1800);
+      setStatus('SMS send failed.', true);
+      pendingCode = null;
+      if (saveBtn) { saveBtn.textContent = 'Send Code'; saveBtn.disabled = false; }
     }
   }
 
-  if (saveBtn)  saveBtn.addEventListener('click', saveAndEnable);
+  // Step 2: confirm the code
+  async function confirmCode() {
+    const entered = codeEl ? codeEl.value.trim() : '';
+    if (!entered || !pendingCode) return;
+    if (entered !== pendingCode) {
+      setStatus('Wrong code. Try again or resend.', true);
+      if (codeEl) { codeEl.value = ''; codeEl.focus(); }
+      return;
+    }
+    // Code matches — save phone + verified flag
+    const userId = Auth.getUserId();
+    if (verifyBtn) { verifyBtn.textContent = '\u2026'; verifyBtn.disabled = true; }
+    try {
+      await Storage.upsertProfile(userId, { phone: pendingPhone, sms_enabled: true, phone_verified: true });
+      AppState.setState(function(s) {
+        if (s.profile) { s.profile.phone = pendingPhone; s.profile.sms_enabled = true; s.profile.phone_verified = true; }
+        return s;
+      });
+      if (phoneEl) phoneEl.value = pendingPhone;
+      UI.setProfile(AppState.getState().profile);
+      setStatus('\u2713 Phone verified! SMS reminders are now active.', false);
+      if (verifyRow) verifyRow.style.display = 'none';
+      pendingCode = null; pendingPhone = null;
+      if (verifyBtn) { verifyBtn.textContent = 'Confirm'; verifyBtn.disabled = false; }
+      setTimeout(close, 2000);
+    } catch (err) {
+      console.error(err);
+      setStatus('Could not save. Try again.', true);
+      if (verifyBtn) { verifyBtn.textContent = 'Confirm'; verifyBtn.disabled = false; }
+    }
+  }
+
+  if (saveBtn)  saveBtn.addEventListener('click', sendCode);
+  if (verifyBtn) verifyBtn.addEventListener('click', confirmCode);
   if (skipBtn)  skipBtn.addEventListener('click', close);
   if (closeBtn) closeBtn.addEventListener('click', close);
   if (overlay)  overlay.addEventListener('click', function(e) { if (e.target === overlay) close(); });
-  if (phoneEl)  phoneEl.addEventListener('keydown', function(e) { if (e.key==='Enter') saveAndEnable(); if (e.key==='Escape') close(); });
+  if (phoneEl)  phoneEl.addEventListener('keydown', function(e) { if (e.key==='Enter') sendCode(); if (e.key==='Escape') close(); });
+  if (codeEl)   codeEl.addEventListener('keydown', function(e) { if (e.key==='Enter') confirmCode(); });
 
   return { open, close };
 })();
@@ -1976,7 +2194,10 @@ const ProfileMenu = (() => {
       const profile     = AppState.getState().profile;
       const currentlyOn = !!(profile && profile.sms_enabled);
       if (!currentlyOn) {
-        if (!(profile && profile.phone && profile.phone.trim())) { hide(); SmsSetup.open(); return; }
+        // Must have a verified phone to enable
+        if (!(profile && profile.phone && profile.phone.trim() && profile.phone_verified)) {
+          hide(); SmsSetup.open(); return;
+        }
         await setSmsEnabled(true);
       } else {
         await setSmsEnabled(false);
@@ -2006,12 +2227,17 @@ const ProfileMenu = (() => {
       }
       savePhone.textContent = '\u2026';
       try {
-        await Storage.upsertProfile(userId, { phone: phone || null });
-        AppState.setState(function(s) { if (s.profile) s.profile.phone = phone || null; return s; });
+        // Changing the number resets verification — user must re-verify
+        await Storage.upsertProfile(userId, { phone: phone || null, phone_verified: false, sms_enabled: false });
+        AppState.setState(function(s) {
+          if (s.profile) { s.profile.phone = phone || null; s.profile.phone_verified = false; s.profile.sms_enabled = false; }
+          return s;
+        });
         if (phoneInput && phone) phoneInput.value = phone;
         UI.setProfile(AppState.getState().profile);
-        savePhone.textContent = 'Saved!';
-        setTimeout(function() { savePhone.textContent = 'Save'; }, 1800);
+        savePhone.textContent = 'Saved — verify to enable SMS';
+        setTimeout(function() { savePhone.textContent = 'Save'; }, 2400);
+        if (phone) SmsSetup.open();
       } catch (err) {
         console.error(err);
         savePhone.textContent = 'Error';
@@ -2020,6 +2246,11 @@ const ProfileMenu = (() => {
     });
   }
   if (phoneInput) phoneInput.addEventListener('keydown', function(e) { if (e.key==='Enter' && savePhone) savePhone.click(); });
+
+  document.getElementById('verifyPhoneBtn')?.addEventListener('click', function() {
+    hide();
+    SmsSetup.open();
+  });
 
   document.getElementById('copyUserIdBtn')?.addEventListener('click', async function() {
     const uidInput = document.getElementById('profileUserIdFull');
@@ -2172,6 +2403,9 @@ const SMS = (() => {
   }
 
   async function dispatchCardReminders(card) {
+    // Only send reminders if the phone number has been verified
+    const profile = AppState.getState().profile;
+    if (!profile || !profile.phone_verified) return;
     const phone = card.phone ? card.phone.trim() : '';
     if (!phone) return;
     const now = Date.now();
