@@ -1161,6 +1161,263 @@ button { font-family: var(--font-sans); }
   .list { width: 216px; }
 }
 /* ================================================================
+   SHARED SUB-FILTER
+   ================================================================ */
+
+.shared-sub-filter {
+  display: flex;
+  gap: 6px;
+  padding: 0 28px 12px;
+}
+
+.shared-filter-btn {
+  padding: 5px 14px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--ink-faint);
+  background: transparent;
+  color: var(--ink-mid);
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: var(--transition);
+}
+.shared-filter-btn:hover { border-color: var(--accent); color: var(--accent); }
+.shared-filter-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--canvas);
+}
+
+/* ================================================================
+   GROUPS INLINE PAGE
+   ================================================================ */
+
+.groups-page {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  background: var(--canvas);
+}
+
+.groups-page-inner {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.groups-sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--ink-faint);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--canvas-card);
+}
+
+.groups-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 14px 12px;
+  border-bottom: 1px solid var(--ink-faint);
+  gap: 8px;
+}
+
+.groups-sidebar-title {
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.groups-sidebar-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 6px;
+}
+
+.groups-sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+}
+.groups-sidebar-item:hover  { background: var(--list-bg); }
+.groups-sidebar-item.active { background: var(--accent-light); }
+
+.groups-sidebar-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.groups-sidebar-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.groups-sidebar-name {
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.groups-sidebar-role {
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  text-transform: capitalize;
+}
+
+.groups-detail {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.groups-detail-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+.groups-detail-empty svg { opacity: 0.35; }
+
+.groups-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 24px 14px;
+  border-bottom: 1px solid var(--ink-faint);
+  gap: 12px;
+}
+
+.groups-detail-name {
+  font-family: var(--font-serif);
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 2px;
+}
+
+.groups-detail-desc {
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+.groups-detail-members {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* ── Member rows (used in groups page + msg panel) ── */
+
+.member-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  transition: background 0.12s;
+}
+.member-row:hover { background: var(--list-bg); }
+
+.member-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.82rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.member-info { flex: 1; min-width: 0; }
+.member-name { font-size: 0.86rem; font-weight: 500; color: var(--ink); }
+.member-meta { font-size: 0.73rem; color: var(--ink-soft); }
+
+.member-remove {
+  font-size: 0.75rem !important;
+  padding: 3px 8px !important;
+  color: var(--ink-soft) !important;
+  border-color: var(--ink-faint) !important;
+  opacity: 0;
+  transition: opacity 0.12s, color 0.12s;
+}
+.member-row:hover .member-remove { opacity: 1; }
+.member-remove:hover { color: var(--red) !important; border-color: var(--red) !important; background: var(--red-light) !important; }
+
+.members-loading,
+.members-empty {
+  padding: 16px;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+/* ── Messages member panel ── */
+
+.msg-members-panel {
+  border-bottom: 1px solid var(--ink-faint);
+  background: var(--canvas-card);
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 6px 12px;
+}
+
+.messages-sidebar-top {
+  padding: 12px 10px 8px;
+  border-bottom: 1px solid var(--ink-faint);
+}
+
+.messages-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--ink-faint);
+  background: var(--canvas-card);
+  min-height: 52px;
+}
+
+/* ================================================================
    FORUM
    ================================================================ */
 
@@ -1206,10 +1463,7 @@ button { font-family: var(--font-sans); }
   letter-spacing: 0.01em;
 }
 
-.forum-compose-hint {
-  font-size: 0.72rem;
-  color: var(--ink-soft);
-}
+.forum-compose-hint { font-size: 0.72rem; color: var(--ink-soft); }
 
 .forum-input {
   width: 100%;
@@ -1225,29 +1479,12 @@ button { font-family: var(--font-sans); }
   transition: border-color 0.15s, box-shadow 0.15s;
   box-sizing: border-box;
 }
-.forum-input:focus {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-light);
-}
+.forum-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-light); }
 
-.forum-compose-footer {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 10px;
-}
+.forum-compose-footer { display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
+.forum-char-count { font-size: 0.73rem; color: var(--ink-soft); }
 
-.forum-char-count {
-  font-size: 0.73rem;
-  color: var(--ink-soft);
-}
-
-.forum-feed {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
+.forum-feed { display: flex; flex-direction: column; gap: 10px; }
 
 .forum-post {
   display: flex;
@@ -1260,12 +1497,7 @@ button { font-family: var(--font-sans); }
   animation: forumFadeIn 0.18s ease;
   transition: opacity 0.25s, transform 0.25s;
 }
-
-.forum-post-deleting {
-  opacity: 0;
-  transform: scale(0.97);
-  pointer-events: none;
-}
+.forum-post-deleting { opacity: 0; transform: scale(0.97); pointer-events: none; }
 
 @keyframes forumFadeIn {
   from { opacity: 0; transform: translateY(5px); }
@@ -1273,47 +1505,21 @@ button { font-family: var(--font-sans); }
 }
 
 .forum-post-avatar {
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.82rem;
-  font-weight: 700;
-  color: #fff;
-  flex-shrink: 0;
-  margin-top: 1px;
+  width: 34px; height: 34px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.82rem; font-weight: 700; color: #fff; flex-shrink: 0; margin-top: 1px;
 }
 
 .forum-post-body { flex: 1; min-width: 0; }
 
 .forum-post-meta {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 6px;
-  flex-wrap: wrap;
+  display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; flex-wrap: wrap;
 }
 
-.forum-post-name {
-  font-size: 0.83rem;
-  font-weight: 600;
-  color: var(--ink);
-}
+.forum-post-name  { font-size: 0.83rem; font-weight: 600; color: var(--ink); }
+.forum-post-time  { font-size: 0.72rem; color: var(--ink-soft); }
 
-.forum-post-time {
-  font-size: 0.72rem;
-  color: var(--ink-soft);
-}
-
-.forum-post-actions {
-  margin-left: auto;
-  display: flex;
-  gap: 6px;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
+.forum-post-actions { margin-left: auto; display: flex; gap: 6px; opacity: 0; transition: opacity 0.15s; }
 .forum-post:hover .forum-post-actions { opacity: 1; }
 
 .forum-post-edit,
@@ -1331,13 +1537,7 @@ button { font-family: var(--font-sans); }
 .forum-post-edit:hover   { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
 .forum-post-delete:hover { border-color: var(--red); color: var(--red); background: var(--red-light); }
 
-.forum-post-content {
-  font-size: 0.88rem;
-  color: var(--ink);
-  line-height: 1.6;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
+.forum-post-content { font-size: 0.88rem; color: var(--ink); line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
 
 .forum-edit-input {
   width: 100%;
@@ -1355,117 +1555,72 @@ button { font-family: var(--font-sans); }
   outline: none;
 }
 
-.forum-edit-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-  justify-content: flex-end;
-}
-
-.forum-load-more {
-  align-self: center;
-  margin-top: 4px;
-  font-size: 0.82rem;
-}
+.forum-edit-actions { display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end; }
+.forum-load-more { align-self: center; margin-top: 4px; font-size: 0.82rem; }
 
 /* ================================================================
-   SHARE MODAL — error, updated input row
+   SHARE MODAL
    ================================================================ */
 
 .share-error {
-  font-size: 0.8rem;
-  padding: 7px 10px;
+  font-size: 0.8rem; padding: 7px 10px;
   border-radius: var(--radius-sm);
   background: var(--red-light);
   border: 1px solid color-mix(in srgb, var(--red) 30%, transparent);
-  color: var(--red);
-  line-height: 1.4;
+  color: var(--red); line-height: 1.4;
 }
 
 /* ================================================================
-   GROUPS VIEW
+   GROUP ITEM (legacy modal list)
    ================================================================ */
 
-.group-item {
-  padding: 12px 0;
-  border-bottom: 1px solid var(--ink-faint);
-}
+.group-item { padding: 12px 0; border-bottom: 1px solid var(--ink-faint); }
 .group-item:last-child { border-bottom: none; }
-
-.group-item-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
+.group-item-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 
 /* ================================================================
-   MESSAGES — group sidebar button
+   MESSAGES — sidebar group buttons
    ================================================================ */
 
 .msg-group-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.73rem;
-  font-weight: 700;
-  flex-shrink: 0;
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.73rem; font-weight: 700; flex-shrink: 0;
 }
 
 .message-group-btn {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  padding: 8px 10px;
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 8px 10px;
   border-radius: var(--radius-sm);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  color: var(--ink);
-  font-family: var(--font-sans);
-  font-size: 0.86rem;
-  transition: background 0.12s;
-  text-align: left;
+  background: transparent; border: none;
+  cursor: pointer; color: var(--ink); font-family: var(--font-sans);
+  font-size: 0.86rem; transition: background 0.12s; text-align: left;
 }
 .message-group-btn:hover  { background: var(--list-bg); }
-.message-group-btn.active { background: var(--ink-faint); font-weight: 600; }
+.message-group-btn.active { background: var(--accent-light); font-weight: 600; }
 
 /* ================================================================
    SMS VERIFICATION
    ================================================================ */
 
 .sms-setup-status {
-  font-size: 0.82rem;
-  padding: 7px 10px;
+  font-size: 0.82rem; padding: 7px 10px;
   border-radius: var(--radius-sm);
   background: var(--green-light);
   border: 1px solid color-mix(in srgb, var(--green) 30%, transparent);
-  color: var(--green);
-  line-height: 1.4;
-  margin-top: 4px;
+  color: var(--green); line-height: 1.4; margin-top: 4px;
 }
 
 .phone-verified-badge {
-  display: inline-block;
-  font-size: 0.73rem;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 100px;
-  margin-top: 5px;
+  display: inline-block; font-size: 0.73rem; font-weight: 600;
+  padding: 2px 8px; border-radius: 100px; margin-top: 5px;
 }
 .phone-verified-badge.verified {
-  background: var(--green-light);
-  color: var(--green);
+  background: var(--green-light); color: var(--green);
   border: 1px solid color-mix(in srgb, var(--green) 30%, transparent);
 }
 .phone-verified-badge.unverified {
-  background: var(--amber-light);
-  color: var(--amber);
+  background: var(--amber-light); color: var(--amber);
   border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
 }

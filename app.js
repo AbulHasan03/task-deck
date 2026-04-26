@@ -95,7 +95,19 @@ const UI = {
     this.el('syncStatus').style.display      = 'none';
     this.el('headerTabs').style.display      = '';
     this.el('messagesView').style.display    = 'none';
-    const fv = this.el('forumView'); if (fv) fv.style.display = 'none';
+    const fv = this.el('forumView');   if (fv) fv.style.display = 'none';
+    const gv = this.el('groupsView');  if (gv) gv.style.display = 'none';
+  },
+
+  showGroups() {
+    this.el('dashboard').style.display       = 'none';
+    this.el('boardContainer').style.display  = 'none';
+    this.el('messagesView').style.display    = 'none';
+    this.el('syncStatus').style.display      = 'none';
+    this.el('headerTabs').style.display      = '';
+    if (this.el('shareBoardFromBoardBtn')) this.el('shareBoardFromBoardBtn').style.display = 'none';
+    const fv = this.el('forumView');   if (fv) fv.style.display = 'none';
+    const gv = this.el('groupsView');  if (gv) gv.style.display = '';
   },
 
   showMessages() {
@@ -106,6 +118,7 @@ const UI = {
     this.el('syncStatus').style.display     = 'none';
     if (this.el('shareBoardFromBoardBtn')) this.el('shareBoardFromBoardBtn').style.display = 'none';
     const fv = this.el('forumView'); if (fv) fv.style.display = 'none';
+    const gv = this.el('groupsView'); if (gv) gv.style.display = 'none';
   },
 
   showForum() {
@@ -116,6 +129,7 @@ const UI = {
     this.el('syncStatus').style.display     = 'none';
     if (this.el('shareBoardFromBoardBtn')) this.el('shareBoardFromBoardBtn').style.display = 'none';
     const fv = this.el('forumView'); if (fv) fv.style.display = '';
+    const gv = this.el('groupsView'); if (gv) gv.style.display = 'none';
   },
 
   showBoard() {
@@ -471,10 +485,14 @@ const Storage = {
   },
 
   async updateForumPost(postId, content) {
-    const { error } = await sb.from('forum_posts')
+    // RLS policy ensures only the owner can update; don't double-filter
+    // as Auth.getUserId() might be stale in some edge cases
+    const { data, error } = await sb.from('forum_posts')
       .update({ content: content })
-      .eq('id', postId).eq('user_id', Auth.getUserId());
+      .eq('id', postId)
+      .select('id, content');
     if (error) throw error;
+    if (!data || data.length === 0) throw new Error('Could not save — you may not own this post.');
   },
 
   async deleteForumPost(postId) {
@@ -483,15 +501,35 @@ const Storage = {
     if (error) throw error;
   },
 
-  // Boards the current user has shared with others (shown in Shared tab alongside received shares)
-  async getMySharedBoards() {
+  // Boards I shared with others — query board_shares where shared_by = me,
+  // joining boards so we get the board details
+  async getBoardsSharedByMe() {
     const userId = Auth.getUserId();
     const { data, error } = await sb
       .from('board_shares')
-      .select('board_id, permission_level, profiles!shared_with(display_name, email), boards!board_id(id, title, color, updated_at, is_pinned)')
-      .eq('boards.user_id', userId);
+      .select('id, permission_level, shared_with, boards!board_id(id, title, color, updated_at, is_pinned, user_id), profiles!shared_with(display_name, email)')
+      .eq('shared_by', userId);
     if (error) throw error;
-    return data ?? [];
+    // Normalise into the same shape as getSharedBoards() returns
+    return (data || []).map(function(row) {
+      const b = row.boards || {};
+      return {
+        id:               b.id,
+        title:            b.title || '(untitled)',
+        color:            b.color || '#C97D4E',
+        updated_at:       b.updated_at,
+        is_pinned:        b.is_pinned,
+        permission_level: row.permission_level,
+        shared_with_name: (row.profiles && (row.profiles.display_name || row.profiles.email)) || '',
+        _sharedByMe:      true,
+      };
+    }).filter(function(b) { return b.id; });
+  },
+
+  async removeGroupMember(groupId, userId) {
+    const { error } = await sb.from('group_members')
+      .delete().eq('group_id', groupId).eq('user_id', userId);
+    if (error) throw error;
   },
 };
 
@@ -1089,6 +1127,31 @@ const Dashboard = (() => {
     AppState.setState(function(s) { s.sortOrder = e.target.value; return s; });
   });
 
+  // Shared sub-filter: 'received' (boards shared to me) | 'sent' (boards I shared)
+  let sharedSubFilter = 'received';
+
+  document.getElementById('sharedSubFilter')?.addEventListener('click', async function(e) {
+    const btn = e.target.closest('.shared-filter-btn');
+    if (!btn) return;
+    sharedSubFilter = btn.dataset.sharedFilter;
+    document.querySelectorAll('.shared-filter-btn').forEach(function(b) {
+      b.classList.toggle('active', b.dataset.sharedFilter === sharedSubFilter);
+    });
+    await refreshSharedBoards();
+  });
+
+  async function refreshSharedBoards() {
+    try {
+      let boards = [];
+      if (sharedSubFilter === 'received') {
+        boards = await Storage.getSharedBoards();
+      } else {
+        boards = await Storage.getBoardsSharedByMe();
+      }
+      AppState.setState(function(s) { return Object.assign({}, s, { sharedBoards: boards }); });
+    } catch (err) { console.error('Shared boards error:', err); }
+  }
+
   document.getElementById('headerTabs')?.addEventListener('click', async function(e) {
     const tab = e.target.closest('.header-tab');
     if (!tab) return;
@@ -1097,15 +1160,22 @@ const Dashboard = (() => {
     tab.classList.add('active');
     const titleEl = UI.el('dashboardTitle');
     if (titleEl) titleEl.textContent = tab.textContent.trim();
+    // Show/hide shared sub-filter bar
+    const subFilter = UI.el('sharedSubFilter');
+    if (subFilter) subFilter.style.display = tabKey === 'shared' ? '' : 'none';
 
     if (tabKey === 'shared') {
-      const shared = await Storage.getSharedBoards();
-      AppState.setState(function(s) { return Object.assign({}, s, { tab: tabKey, sharedBoards: shared }); });
+      sharedSubFilter = 'received';
+      document.querySelectorAll('.shared-filter-btn').forEach(function(b) {
+        b.classList.toggle('active', b.dataset.sharedFilter === 'received');
+      });
+      await refreshSharedBoards();
     } else if (tabKey === 'groups') {
       const groups = await Storage.getUserGroups();
       AppState.setState(function(s) { return Object.assign({}, s, { tab: tabKey, groups: groups }); });
-      GroupsView.render();
-      UI.el('groupsOverlay')?.classList.add('open');
+      UI.showGroups();
+      GroupsView.renderInline();
+      return; // renderInline handles state
     } else if (tabKey === 'messages') {
       const groups = await Storage.getUserGroups();
       AppState.setState(function(s) { return Object.assign({}, s, { tab: tabKey, groups: groups }); });
@@ -1181,46 +1251,7 @@ const MessagesView = (() => {
     }
   }
 
-  async function selectGroup(groupId, groupName) {
-    activeGroupId = groupId;
-    renderedIds.clear();
-    const titleEl = UI.el('messagesGroupTitle');
-    const areaEl  = UI.el('messagesInputArea');
-    const feedEl  = UI.el('messagesFeed');
-    if (titleEl) titleEl.textContent = groupName;
-    if (areaEl)  areaEl.style.display = 'flex';
-    if (feedEl)  feedEl.innerHTML = '<p class="loading-text">Loading messages\u2026</p>';
-    const msgs = await Storage.getGroupMessages(groupId);
-    if (feedEl) feedEl.innerHTML = '';
-    const state = AppState.getState();
-    const myId  = (state.profile && state.profile.id) || Auth.getUserId();
-    msgs.reverse().forEach(function(m) {
-      appendMessageEl(m, myId);
-      renderedIds.add(m.id);
-    });
-    if (subscription) subscription.unsubscribe();
-    subscription = Storage.subscribeToMessages(groupId, function(newMsg) {
-      // Only append if we haven't rendered this ID yet (avoids echo of our own sends)
-      if (renderedIds.has(newMsg.id)) return;
-      renderedIds.add(newMsg.id);
-      const st   = AppState.getState();
-      const myId = (st.profile && st.profile.id) || Auth.getUserId();
-      // Remove any temp placeholder with same content+sender if it was ours
-      if (newMsg.sender_id === myId) {
-        const feed = UI.el('messagesFeed');
-        if (feed) {
-          const temps = feed.querySelectorAll('[data-temp]');
-          temps.forEach(function(t) {
-            if (t.querySelector('.message-bubble') &&
-                t.querySelector('.message-bubble').textContent === newMsg.content) {
-              t.remove();
-            }
-          });
-        }
-      }
-      appendMessageEl(newMsg, myId);
-    });
-  }
+
 
   function appendMessageEl(m, myId) {
     const feed = UI.el('messagesFeed');
@@ -1247,13 +1278,72 @@ const MessagesView = (() => {
     const list   = UI.el('messageGroupsList');
     if (!list) return;
     list.innerHTML = groups.map(function(g) {
-      return '<button class="message-group-btn ' + (activeGroupId === g.id ? 'active' : '') + '" data-id="' + g.id + '" data-name="' + Render.esc(g.name) + '">' +
+      return '<button class="message-group-btn ' + (activeGroupId === g.id ? 'active' : '') + '" data-id="' + g.id + '" data-name="' + Render.esc(g.name) + '" data-role="' + Render.esc(g.role || '') + '">' +
         '<span class="msg-group-avatar">' + Render.esc((g.name || '?').charAt(0).toUpperCase()) + '</span>' +
         '<span>' + Render.esc(g.name) + '</span>' +
         '</button>';
     }).join('');
     list.querySelectorAll('.message-group-btn').forEach(function(btn) {
-      btn.onclick = function() { selectGroup(btn.dataset.id, btn.dataset.name); };
+      btn.onclick = function() { selectGroup(btn.dataset.id, btn.dataset.name, btn.dataset.role); };
+    });
+  }
+
+  async function selectGroup(groupId, groupName, role) {
+    activeGroupId = groupId;
+    renderedIds.clear();
+    const titleEl   = UI.el('messagesGroupTitle');
+    const areaEl    = UI.el('messagesInputArea');
+    const feedEl    = UI.el('messagesFeed');
+    const actionsEl = UI.el('messagesHeaderActions');
+    const panelEl   = UI.el('msgMembersPanel');
+    if (titleEl)   titleEl.textContent = groupName;
+    if (areaEl)    areaEl.style.display = 'flex';
+    if (actionsEl) { actionsEl.style.display = 'flex'; }
+    if (panelEl)   panelEl.style.display = 'none';
+    if (feedEl)    feedEl.innerHTML = '<p class="loading-text">Loading messages…</p>';
+
+    // Wire header action buttons
+    const addBtn     = UI.el('msgAddMemberBtn');
+    const membersBtn = UI.el('msgViewMembersBtn');
+    if (addBtn) {
+      addBtn.onclick = function() { GroupsView.openAddMemberModal(groupId, groupName); };
+    }
+    if (membersBtn) {
+      membersBtn.onclick = async function() {
+        if (!panelEl) return;
+        if (panelEl.style.display !== 'none') { panelEl.style.display = 'none'; return; }
+        panelEl.style.display = '';
+        panelEl.innerHTML = '<div class="members-loading">Loading…</div>';
+        await GroupsView.loadDetailMembers(groupId, role || '');
+        // Copy the rendered members into the panel
+        const detailMembers = UI.el('groupsDetailMembers');
+        if (detailMembers) panelEl.innerHTML = detailMembers.innerHTML;
+        else panelEl.innerHTML = '<div class="members-empty">No members found.</div>';
+      };
+    }
+
+    const msgs = await Storage.getGroupMessages(groupId);
+    if (feedEl) feedEl.innerHTML = '';
+    const state = AppState.getState();
+    const myId  = (state.profile && state.profile.id) || Auth.getUserId();
+    msgs.reverse().forEach(function(m) { appendMessageEl(m, myId); renderedIds.add(m.id); });
+
+    if (subscription) subscription.unsubscribe();
+    subscription = Storage.subscribeToMessages(groupId, function(newMsg) {
+      if (renderedIds.has(newMsg.id)) return;
+      renderedIds.add(newMsg.id);
+      const st   = AppState.getState();
+      const myId = (st.profile && st.profile.id) || Auth.getUserId();
+      if (newMsg.sender_id === myId) {
+        const feed = UI.el('messagesFeed');
+        if (feed) {
+          feed.querySelectorAll('[data-temp]').forEach(function(t) {
+            if (t.querySelector('.message-bubble') &&
+                t.querySelector('.message-bubble').textContent === newMsg.content) t.remove();
+          });
+        }
+      }
+      appendMessageEl(newMsg, myId);
     });
   }
 
@@ -1350,91 +1440,124 @@ window.BoardSharing = BoardSharing;
    ═══════════════════════════════════════════════════════════ */
 
 const GroupsView = (() => {
-  function render() {
-    const groups = AppState.getState().groups || [];
-    const list   = UI.el('groupsList');
-    if (!list) return;
+  let selectedGroup = null; // { id, name, description, role }
 
+  // ── Inline page renderer ─────────────────────────────────────
+  function renderInline() {
+    const groups = AppState.getState().groups || [];
+    renderSidebar(groups);
+    clearDetail();
+  }
+
+  function renderSidebar(groups) {
+    const list = UI.el('groupsSidebarList');
+    if (!list) return;
     if (!groups.length) {
-      list.innerHTML = '<div class="empty-state"><div class="empty-state-text">No groups yet.<br>Create one to collaborate with others.</div></div>';
+      list.innerHTML = '<div class="empty-state" style="padding:24px 16px;"><div class="empty-state-text">No groups yet.<br>Create one to start.</div></div>';
       return;
     }
-
     list.innerHTML = groups.map(function(g) {
-      return '<div class="group-item" data-group-id="' + g.id + '">' +
-        '<div class="group-item-header">' +
-          '<div>' +
-            '<div class="share-item-email" style="font-weight:600;">' + Render.esc(g.name) + '</div>' +
-            '<div class="share-item-perm">' + (g.description ? Render.esc(g.description) + ' \u00b7 ' : '') + g.role + '</div>' +
-          '</div>' +
-          '<div style="display:flex;gap:6px;">' +
-            '<button class="btn-ghost" style="font-size:12px;" data-group-add-member="' + g.id + '" data-group-name="' + Render.esc(g.name) + '">+ Member</button>' +
-            '<button class="btn-ghost" style="font-size:12px;" data-group-show-members="' + g.id + '">Members \u25be</button>' +
-          '</div>' +
-        '</div>' +
-        '<div class="group-members-list" id="members-' + g.id + '" style="display:none;margin-top:8px;padding:8px;background:var(--canvas);border-radius:var(--radius-sm);"></div>' +
-        '</div>';
+      const active = selectedGroup && selectedGroup.id === g.id;
+      return '<button class="groups-sidebar-item' + (active ? ' active' : '') + '" data-gid="' + g.id + '">' +
+        '<span class="groups-sidebar-avatar">' + Render.esc((g.name||'?').charAt(0).toUpperCase()) + '</span>' +
+        '<span class="groups-sidebar-info">' +
+          '<span class="groups-sidebar-name">' + Render.esc(g.name) + '</span>' +
+          '<span class="groups-sidebar-role">' + Render.esc(g.role || '') + '</span>' +
+        '</span>' +
+        '</button>';
     }).join('');
-
-    list.querySelectorAll('[data-group-add-member]').forEach(function(btn) {
-      btn.addEventListener('click', function() { openAddMemberModal(btn.dataset.groupAddMember, btn.dataset.groupName); });
-    });
-    list.querySelectorAll('[data-group-show-members]').forEach(function(btn) {
-      btn.addEventListener('click', function() { toggleMembers(btn.dataset.groupShowMembers, btn); });
+    list.querySelectorAll('.groups-sidebar-item').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        const gid  = btn.dataset.gid;
+        const g    = (AppState.getState().groups || []).find(function(x) { return x.id === gid; });
+        if (!g) return;
+        selectedGroup = g;
+        list.querySelectorAll('.groups-sidebar-item').forEach(function(b) {
+          b.classList.toggle('active', b.dataset.gid === gid);
+        });
+        showDetail(g);
+      });
     });
   }
 
-  async function toggleMembers(groupId, btn) {
-    const panel = UI.el('members-' + groupId);
-    if (!panel) return;
-    if (panel.style.display !== 'none') {
-      panel.style.display = 'none';
-      btn.textContent = 'Members \u25be';
-      return;
+  function clearDetail() {
+    const empty  = UI.el('groupsDetailEmpty');
+    const panel  = UI.el('groupsDetailPanel');
+    if (empty) empty.style.display = '';
+    if (panel) panel.style.display = 'none';
+  }
+
+  async function showDetail(g) {
+    const empty  = UI.el('groupsDetailEmpty');
+    const panel  = UI.el('groupsDetailPanel');
+    const nameEl = UI.el('groupsDetailName');
+    const descEl = UI.el('groupsDetailDesc');
+    if (empty) empty.style.display = 'none';
+    if (panel) panel.style.display = '';
+    if (nameEl) nameEl.textContent = g.name;
+    if (descEl) descEl.textContent = g.description || '';
+
+    // Wire add-member button
+    const addBtn = UI.el('groupsDetailAddMemberBtn');
+    if (addBtn) {
+      addBtn.onclick = function() { openAddMemberModal(g.id, g.name); };
     }
-    panel.style.display = 'block';
-    btn.textContent = 'Members \u25b4';
-    panel.innerHTML = '<div style="font-size:0.8rem;color:var(--ink-soft);">Loading\u2026</div>';
+
+    await loadDetailMembers(g.id, g.role);
+  }
+
+  async function loadDetailMembers(groupId, myRole) {
+    const membersEl = UI.el('groupsDetailMembers');
+    if (!membersEl) return;
+    membersEl.innerHTML = '<div class="members-loading">Loading…</div>';
     try {
       const members = await Storage.getGroupMembers(groupId);
-      if (!members || members.length === 0) {
-        panel.innerHTML = '<div style="font-size:0.8rem;color:var(--ink-soft);">No members yet.</div>';
+      const myId    = (AppState.getState().profile || {}).id || Auth.getUserId();
+      const canRemove = myRole === 'admin' || myRole === 'owner';
+      if (!members || !members.length) {
+        membersEl.innerHTML = '<div class="members-empty">No members yet.</div>';
         return;
       }
-      panel.innerHTML = members.map(function(m) {
-        const label = m.display_name || m.email || '?';
-        return '<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid var(--ink-faint);">' +
-          '<div style="width:26px;height:26px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:0.75rem;color:#fff;font-weight:600;">' +
-            label.charAt(0).toUpperCase() +
+      membersEl.innerHTML = '';
+      members.forEach(function(m) {
+        const isSelf = m.user_id === myId;
+        const row = document.createElement('div');
+        row.className = 'member-row';
+        row.innerHTML =
+          '<div class="member-avatar">' + Render.esc((m.display_name || m.email || '?').charAt(0).toUpperCase()) + '</div>' +
+          '<div class="member-info">' +
+            '<div class="member-name">' + Render.esc(m.display_name || m.email || 'Unknown') + '</div>' +
+            '<div class="member-meta">' + Render.esc(m.email || '') + ' · ' + Render.esc(m.role) + '</div>' +
           '</div>' +
-          '<div>' +
-            '<div style="font-size:0.83rem;font-weight:500;">' + Render.esc(label) + '</div>' +
-            '<div style="font-size:0.73rem;color:var(--ink-soft);">' + Render.esc(m.email || '') + ' \u00b7 ' + m.role + '</div>' +
-          '</div>' +
-          '</div>';
-      }).join('');
+          (canRemove && !isSelf ?
+            '<button class="member-remove btn-ghost" data-uid="' + m.user_id + '" title="Remove from group">✕ Remove</button>' : '');
+        if (canRemove && !isSelf) {
+          row.querySelector('.member-remove').addEventListener('click', async function() {
+            if (!confirm('Remove ' + (m.display_name || m.email) + ' from this group?')) return;
+            try {
+              await Storage.removeGroupMember(groupId, m.user_id);
+              await loadDetailMembers(groupId, myRole);
+            } catch (err) { alert('Error: ' + err.message); }
+          });
+        }
+        membersEl.appendChild(row);
+      });
     } catch (err) {
-      panel.innerHTML = '<div style="font-size:0.8rem;color:var(--red);">Error: ' + Render.esc(err.message) + '</div>';
+      membersEl.innerHTML = '<div class="members-empty" style="color:var(--red);">Error: ' + Render.esc(err.message) + '</div>';
     }
   }
 
+  // ── Add member modal ─────────────────────────────────────────
   function openAddMemberModal(groupId, groupName) {
     const overlay = UI.el('addMemberOverlay');
-    if (!overlay) {
-      const val = prompt('Add a member to "' + groupName + '" by email or friend code:');
-      if (!val || !val.trim()) return;
-      Storage.addGroupMember(groupId, val.trim())
-        .then(function() { alert('Member added!'); })
-        .catch(function(err) { alert('Error: ' + (err.message || err)); });
-      return;
-    }
+    if (!overlay) return;
     const nameEl = UI.el('addMemberGroupName');
     if (nameEl) nameEl.textContent = groupName || '';
     overlay.dataset.groupId = groupId;
     const inputEl = UI.el('addMemberInput');
     if (inputEl) inputEl.value = '';
     const errEl = UI.el('addMemberError');
-    if (errEl) errEl.textContent = '';
+    if (errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
     overlay.classList.add('open');
     if (inputEl) inputEl.focus();
   }
@@ -1446,17 +1569,18 @@ const GroupsView = (() => {
     const identifier = inputEl ? inputEl.value.trim() : '';
     if (!identifier) { if (inputEl) inputEl.focus(); return; }
     const btn = UI.el('confirmAddMemberBtn');
-    btn.textContent = '\u2026';
+    btn.textContent = '…';
+    const errEl = UI.el('addMemberError');
     try {
       await Storage.addGroupMember(groupId, identifier);
       if (overlay) overlay.classList.remove('open');
       btn.textContent = 'Add';
-      const panel  = UI.el('members-' + groupId);
-      const toggle = document.querySelector('[data-group-show-members="' + groupId + '"]');
-      if (panel && panel.style.display !== 'none' && toggle) toggleMembers(groupId, toggle);
+      // Refresh detail if this is the selected group
+      if (selectedGroup && selectedGroup.id === groupId) {
+        await loadDetailMembers(groupId, selectedGroup.role);
+      }
     } catch (err) {
-      const errEl = UI.el('addMemberError');
-      if (errEl) errEl.textContent = err.message || 'Could not add member.';
+      if (errEl) { errEl.textContent = err.message || 'Could not add member.'; errEl.style.display = ''; }
       btn.textContent = 'Add';
     }
   });
@@ -1466,6 +1590,11 @@ const GroupsView = (() => {
   });
   document.getElementById('cancelAddMemberBtn')?.addEventListener('click',  function() { UI.el('addMemberOverlay')?.classList.remove('open'); });
   document.getElementById('cancelAddMemberBtn2')?.addEventListener('click', function() { UI.el('addMemberOverlay')?.classList.remove('open'); });
+
+  // ── Create group ─────────────────────────────────────────────
+  document.getElementById('createGroupInlineBtn')?.addEventListener('click', function() {
+    UI.el('createGroupOverlay')?.classList.add('open');
+  });
 
   document.getElementById('createGroupBtn')?.addEventListener('click', function() {
     UI.el('groupsOverlay')?.classList.remove('open');
@@ -1479,17 +1608,16 @@ const GroupsView = (() => {
     const desc   = (descEl && descEl.value.trim()) || null;
     if (!name) { if (nameEl) nameEl.focus(); return; }
     const btn = UI.el('confirmCreateGroupBtn');
-    btn.textContent = '\u2026';
+    btn.textContent = '…';
     try {
       await Storage.createGroup(name, desc);
       const groups = await Storage.getUserGroups();
       AppState.setState(function(s) { return Object.assign({}, s, { groups: groups }); });
       UI.el('createGroupOverlay')?.classList.remove('open');
-      UI.el('groupsOverlay')?.classList.add('open');
       if (nameEl) nameEl.value = '';
       if (descEl) descEl.value = '';
       btn.textContent = 'Create';
-      render();
+      renderInline();
     } catch (err) {
       console.error(err);
       btn.textContent = 'Error';
@@ -1497,17 +1625,22 @@ const GroupsView = (() => {
     }
   });
 
-  document.getElementById('groupsClose')?.addEventListener('click',          function() { UI.el('groupsOverlay')?.classList.remove('open'); });
   document.getElementById('createGroupClose')?.addEventListener('click',     function() { UI.el('createGroupOverlay')?.classList.remove('open'); });
   document.getElementById('createGroupCancelBtn')?.addEventListener('click', function() { UI.el('createGroupOverlay')?.classList.remove('open'); });
-  document.getElementById('groupsOverlay')?.addEventListener('click', function(e) {
-    if (e.target === UI.el('groupsOverlay')) UI.el('groupsOverlay').classList.remove('open');
-  });
   document.getElementById('createGroupOverlay')?.addEventListener('click', function(e) {
     if (e.target === UI.el('createGroupOverlay')) UI.el('createGroupOverlay').classList.remove('open');
   });
 
-  return { render, openAddMemberModal };
+  // ── Legacy modal (groups tab used to open a modal) ───────────
+  document.getElementById('groupsClose')?.addEventListener('click', function() { UI.el('groupsOverlay')?.classList.remove('open'); });
+  document.getElementById('groupsOverlay')?.addEventListener('click', function(e) {
+    if (e.target === UI.el('groupsOverlay')) UI.el('groupsOverlay').classList.remove('open');
+  });
+
+  // ── Expose render for old modal-based GroupsView callers ─────
+  function render() { renderInline(); }
+
+  return { render, renderInline, openAddMemberModal, loadDetailMembers };
 })();
 window.GroupsView = GroupsView;
 
