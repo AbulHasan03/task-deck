@@ -2513,8 +2513,7 @@ const SMS = (() => {
       return { ok: false, reason: 'no_session' };
     }
     try {
-      const resp = await fetch(SUPABASE_URL + '/functions/v1/send-sms', {
-        method: 'POST',
+      const resp = await fetch(SUPABASE_URL + '/functions/v1/dynamic-responder', {        method: 'POST',
         headers: {
           'Content-Type':  'application/json',
           'Authorization': 'Bearer ' + session.access_token,
