@@ -259,6 +259,50 @@ const Auth = (() => {
    STORAGE
    ═══════════════════════════════════════════════════════════ */
 
+/* ── UI helpers: custom confirm dialog + toast ── */
+
+function showConfirm(message, confirmLabel, cancelLabel) {
+  return new Promise(function(resolve) {
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML =
+      '<div class="confirm-dialog">' +
+        '<p class="confirm-message">' + Render.esc(message) + '</p>' +
+        '<div class="confirm-actions">' +
+          '<button class="btn-ghost confirm-cancel">' + Render.esc(cancelLabel || 'Cancel') + '</button>' +
+          '<button class="btn-danger confirm-ok">' + Render.esc(confirmLabel || 'Confirm') + '</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    function cleanup(result) {
+      overlay.classList.add('confirm-fade-out');
+      setTimeout(function() { overlay.remove(); }, 180);
+      resolve(result);
+    }
+    overlay.querySelector('.confirm-ok').addEventListener('click',     function() { cleanup(true);  });
+    overlay.querySelector('.confirm-cancel').addEventListener('click', function() { cleanup(false); });
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) cleanup(false); });
+    document.addEventListener('keydown', function handler(e) {
+      if (e.key === 'Escape') { cleanup(false); document.removeEventListener('keydown', handler); }
+      if (e.key === 'Enter')  { cleanup(true);  document.removeEventListener('keydown', handler); }
+    });
+    // Focus the confirm button so Enter works immediately
+    setTimeout(function() { overlay.querySelector('.confirm-ok').focus(); }, 30);
+  });
+}
+
+function showToast(message, isError) {
+  const toast = document.createElement('div');
+  toast.className = 'app-toast' + (isError ? ' toast-error' : '');
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(function() { toast.classList.add('toast-visible'); }, 10);
+  setTimeout(function() {
+    toast.classList.remove('toast-visible');
+    setTimeout(function() { toast.remove(); }, 300);
+  }, 3200);
+}
+
 const Storage = {
 
   async getProfile(userId) {
@@ -527,6 +571,13 @@ const Storage = {
   },
 
   async removeGroupMember(groupId, userId) {
+    const { error } = await sb.from('group_members')
+      .delete().eq('group_id', groupId).eq('user_id', userId);
+    if (error) throw error;
+  },
+
+  async leaveGroup(groupId) {
+    const userId = Auth.getUserId();
     const { error } = await sb.from('group_members')
       .delete().eq('group_id', groupId).eq('user_id', userId);
     if (error) throw error;
@@ -941,14 +992,15 @@ const Dashboard = (() => {
     const state = AppState.getState();
     const tab   = state.tab;
 
-    if (tab === 'messages') { UI.showMessages(); MessagesView.render(); return; }
-    if (tab === 'forum')    { UI.showForum();    Forum.render();        return; }
+    // These views manage themselves; don't let the subscribe callback override them
+    if (tab === 'messages' || tab === 'forum' || tab === 'groups') return;
 
     UI.showDashboard();
 
-    const source   = tab === 'shared' ? (state.sharedBoards || []) : (state.boards || []);
+    const isSharedTab = tab === 'shared';
+    const source   = isSharedTab ? (state.sharedBoards || []) : (state.boards || []);
     const query    = (state.searchQuery || '').toLowerCase();
-    let filtered   = source.filter(function(b) { return b.title.toLowerCase().includes(query); });
+    let filtered   = source.filter(function(b) { return b.title && b.title.toLowerCase().includes(query); });
 
     filtered.sort(function(a, b) {
       const pA = !!a.is_pinned, pB = !!b.is_pinned;
@@ -963,12 +1015,21 @@ const Dashboard = (() => {
 
     const fragment = document.createDocumentFragment();
 
-    if (filtered.length === 0 && state.searchQuery) {
+    if (filtered.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'empty-state';
       empty.style.gridColumn = '1 / -1';
-      empty.innerHTML = '<div class="empty-state-text">No boards found matching "' + state.searchQuery + '"</div>';
-      fragment.appendChild(empty);
+      if (isSharedTab && query) {
+        empty.innerHTML = '<div class="empty-state-text">No boards found matching "' + query + '"</div>';
+      } else if (isSharedTab) {
+        const subFilter = state.sharedSubFilter || 'received';
+        empty.innerHTML = subFilter === 'received'
+          ? '<div class="empty-state-text">No boards have been shared with you yet.</div>'
+          : '<div class="empty-state-text">You haven\'t shared any boards yet.<br>Open a board and click Share.</div>';
+      } else if (query) {
+        empty.innerHTML = '<div class="empty-state-text">No boards found matching "' + query + '"</div>';
+      }
+      if (isSharedTab || query) fragment.appendChild(empty);
     } else {
       filtered.forEach(function(board) {
         const card = Render.boardCard(board);
@@ -980,11 +1041,13 @@ const Dashboard = (() => {
       });
     }
 
-    const addCard = document.createElement('div');
-    addCard.className = 'board-card-new';
-    addCard.innerHTML = '<svg width="22" height="22" viewBox="0 0 16 16" fill="none"><path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>New Board</span>';
-    addCard.addEventListener('click', showNewBoardModal);
-    fragment.appendChild(addCard);
+    if (!isSharedTab) {
+      const addCard = document.createElement('div');
+      addCard.className = 'board-card-new';
+      addCard.innerHTML = '<svg width="22" height="22" viewBox="0 0 16 16" fill="none"><path d="M8 1v14M1 8h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span>New Board</span>';
+      addCard.addEventListener('click', showNewBoardModal);
+      fragment.appendChild(addCard);
+    }
 
     grid.innerHTML = '';
     grid.appendChild(fragment);
@@ -1148,7 +1211,7 @@ const Dashboard = (() => {
       } else {
         boards = await Storage.getBoardsSharedByMe();
       }
-      AppState.setState(function(s) { return Object.assign({}, s, { sharedBoards: boards }); });
+      AppState.setState(function(s) { return Object.assign({}, s, { sharedBoards: boards, sharedSubFilter: sharedSubFilter }); });
     } catch (err) { console.error('Shared boards error:', err); }
   }
 
@@ -1178,11 +1241,21 @@ const Dashboard = (() => {
       return; // renderInline handles state
     } else if (tabKey === 'messages') {
       const groups = await Storage.getUserGroups();
-      AppState.setState(function(s) { return Object.assign({}, s, { tab: tabKey, groups: groups }); });
+      AppState.setState(function(s) { return Object.assign({}, s, { tab: tabKey, groups: groups }); }, true);
+      UI.showMessages();
+      MessagesView.render();
       MessagesView.init();
+    } else if (tabKey === 'forum') {
+      AppState.setState(function(s) { return Object.assign({}, s, { tab: tabKey }); }, true);
+      UI.showForum();
+      Forum.render();
     } else {
       AppState.setState(function(s) { return Object.assign({}, s, { tab: tabKey }); });
     }
+    // Ensure the clicked tab stays highlighted after any async operations
+    document.querySelectorAll('.header-tab').forEach(function(t) {
+      t.classList.toggle('active', t.dataset.tab === tabKey);
+    });
   });
 
   newBoardBtn?.addEventListener('click', showNewBoardModal);
@@ -1503,6 +1576,28 @@ const GroupsView = (() => {
       addBtn.onclick = function() { openAddMemberModal(g.id, g.name); };
     }
 
+    // Wire leave group button
+    const leaveBtn = UI.el('groupsDetailLeaveBtn');
+    if (leaveBtn) {
+      leaveBtn.style.display = g.role !== 'owner' ? '' : 'none';
+      leaveBtn.onclick = async function() {
+        const confirmed = await showConfirm('Leave "' + g.name + '"? You will lose access.', 'Leave Group', 'Cancel');
+        if (!confirmed) return;
+        leaveBtn.textContent = '…';
+        try {
+          await Storage.leaveGroup(g.id);
+          const groups = await Storage.getUserGroups();
+          AppState.setState(function(s) { return Object.assign({}, s, { groups: groups }); });
+          selectedGroup = null;
+          renderInline();
+          showToast('Left "' + g.name + '"');
+        } catch (err) {
+          leaveBtn.textContent = 'Leave Group';
+          showToast('Error: ' + err.message, true);
+        }
+      };
+    }
+
     await loadDetailMembers(g.id, g.role);
   }
 
@@ -1532,12 +1627,34 @@ const GroupsView = (() => {
           (canRemove && !isSelf ?
             '<button class="member-remove btn-ghost" data-uid="' + m.user_id + '" title="Remove from group">✕ Remove</button>' : '');
         if (canRemove && !isSelf) {
-          row.querySelector('.member-remove').addEventListener('click', async function() {
-            if (!confirm('Remove ' + (m.display_name || m.email) + ' from this group?')) return;
+          row.querySelector('.member-remove').addEventListener('click', async function(e) {
+            e.stopPropagation();
+            const removeBtn = e.currentTarget;
+            if (removeBtn.dataset.pending) return; // prevent double-click recursion
+            removeBtn.dataset.pending = '1';
+            const displayName = m.display_name || m.email || 'this member';
+            // Use custom confirm modal instead of browser confirm()
+            const confirmed = await showConfirm('Remove ' + displayName + ' from this group?', 'Remove', 'Cancel');
+            if (!confirmed) { delete removeBtn.dataset.pending; return; }
+            removeBtn.textContent = '…';
             try {
               await Storage.removeGroupMember(groupId, m.user_id);
-              await loadDetailMembers(groupId, myRole);
-            } catch (err) { alert('Error: ' + err.message); }
+              // Replace row with fade-out instead of full reload to avoid recursion
+              row.style.transition = 'opacity 0.2s';
+              row.style.opacity = '0';
+              setTimeout(function() {
+                row.remove();
+                // If membersEl is now empty, show empty state
+                const remaining = membersEl.querySelectorAll('.member-row');
+                if (!remaining.length) {
+                  membersEl.innerHTML = '<div class="members-empty">No members yet.</div>';
+                }
+              }, 220);
+            } catch (err) {
+              delete removeBtn.dataset.pending;
+              removeBtn.textContent = '✕ Remove';
+              showToast('Error: ' + err.message, true);
+            }
           });
         }
         membersEl.appendChild(row);
@@ -2599,39 +2716,87 @@ const AIBoard = (() => {
   function renderPreview(data) {
     if (previewName) previewName.textContent = data.board_title;
     if (!previewLists) return;
-    previewLists.innerHTML = data.lists.map(function(list) {
-      const cards = (list.cards || []).map(function(card) {
-        const pri = card.priority ? ' <span class="ai-preview-priority ai-pri-' + card.priority + '">' + card.priority + '</span>' : '';
-        return '<div class="ai-preview-card">' + Render.esc(card.title) + pri + '</div>';
+    // Build with checkboxes — all checked by default, user can uncheck to exclude
+    previewLists.innerHTML = data.lists.map(function(list, li) {
+      const cards = (list.cards || []).map(function(card, ci) {
+        const pri = card.priority ? '<span class="ai-preview-priority ai-pri-' + card.priority + '">' + card.priority + '</span>' : '';
+        const cbId = 'ai-card-' + li + '-' + ci;
+        return '<label class="ai-preview-card ai-preview-card-check" for="' + cbId + '">' +
+          '<input type="checkbox" id="' + cbId + '" data-li="' + li + '" data-ci="' + ci + '" checked />' +
+          '<span class="ai-card-title">' + Render.esc(card.title) + '</span>' +
+          pri +
+          '</label>';
       }).join('');
+      const listCbId = 'ai-list-' + li;
       return '<div class="ai-preview-list">' +
-        '<div class="ai-preview-list-name">' + Render.esc(list.title) +
+        '<label class="ai-preview-list-name" for="' + listCbId + '">' +
+          '<input type="checkbox" id="' + listCbId + '" class="ai-list-toggle" data-li="' + li + '" checked />' +
+          '<span>' + Render.esc(list.title) + '</span>' +
           '<span class="ai-preview-list-count">' + (list.cards || []).length + '</span>' +
-        '</div>' +
+        '</label>' +
         '<div class="ai-preview-cards">' + cards + '</div>' +
         '</div>';
     }).join('');
+
+    // List toggle — checking/unchecking a list checks/unchecks all its cards
+    previewLists.querySelectorAll('.ai-list-toggle').forEach(function(listCb) {
+      listCb.addEventListener('change', function() {
+        const li = listCb.dataset.li;
+        previewLists.querySelectorAll('input[data-li="' + li + '"]').forEach(function(cb) {
+          cb.checked = listCb.checked;
+        });
+        updateApproveBtn();
+      });
+    });
+    previewLists.querySelectorAll('input[type="checkbox"]:not(.ai-list-toggle)').forEach(function(cb) {
+      cb.addEventListener('change', updateApproveBtn);
+    });
+    updateApproveBtn();
+  }
+
+  function updateApproveBtn() {
+    const btn = UI.el('aiApproveBtn');
+    if (!btn || !previewLists) return;
+    const anyChecked = previewLists.querySelector('input[type="checkbox"]:not(.ai-list-toggle):checked');
+    btn.disabled = !anyChecked;
+    btn.title = anyChecked ? '' : 'Select at least one card to create';
+  }
+
+  function getCheckedSelection() {
+    if (!pendingBoard || !previewLists) return null;
+    const result = { board_title: pendingBoard.board_title, lists: [] };
+    pendingBoard.lists.forEach(function(list, li) {
+      const checkedCards = (list.cards || []).filter(function(card, ci) {
+        const cb = previewLists.querySelector('input[data-li="' + li + '"][data-ci="' + ci + '"]');
+        return cb && cb.checked;
+      });
+      if (checkedCards.length > 0) {
+        result.lists.push({ title: list.title, cards: checkedCards });
+      }
+    });
+    return result;
   }
 
   async function approve() {
-    if (!pendingBoard) return;
+    const selection = getCheckedSelection();
+    if (!selection || !selection.lists.length) return;
     const btn = UI.el('aiApproveBtn');
     if (btn) { btn.textContent = 'Creating\u2026'; btn.disabled = true; }
 
     const userId = Auth.getUserId();
     // Pick a color from the palette based on board title hash
     const colors = ['#C97D4E','#4E7FC9','#4E9B6F','#9B4EC9','#C94E7F','#5A5248'];
-    const colorIdx = pendingBoard.board_title.length % colors.length;
+    const colorIdx = selection.board_title.length % colors.length;
     const color = colors[colorIdx];
 
     UI.setSyncStatus('saving');
     try {
       // Create board
-      const board = await Storage.createBoard(userId, pendingBoard.board_title, color);
+      const board = await Storage.createBoard(userId, selection.board_title, color);
 
-      // Create lists and cards in sequence
-      for (let li = 0; li < pendingBoard.lists.length; li++) {
-        const listDef = pendingBoard.lists[li];
+      // Create only the checked lists and cards
+      for (let li = 0; li < selection.lists.length; li++) {
+        const listDef = selection.lists[li];
         const list    = await Storage.createList(board.id, listDef.title, li);
         const cards   = listDef.cards || [];
         for (let ci = 0; ci < cards.length; ci++) {
