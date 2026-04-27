@@ -548,40 +548,38 @@ const Storage = {
   // Boards I shared with others — query board_shares where shared_by = me,
   // joining boards so we get the board details
   async getBoardsSharedByMe() {
-    const userId = Auth.getUserId();
-    const { data, error } = await sb
-      .from('board_shares')
-      .select('id, permission_level, shared_with, boards!board_id(id, title, color, updated_at, is_pinned, user_id), profiles!shared_with(display_name, email)')
-      .eq('shared_by', userId);
-    if (error) throw error;
-    // Normalise into the same shape as getSharedBoards() returns
-    return (data || []).map(function(row) {
-      const b = row.boards || {};
-      return {
-        id:               b.id,
-        title:            b.title || '(untitled)',
-        color:            b.color || '#C97D4E',
-        updated_at:       b.updated_at,
-        is_pinned:        b.is_pinned,
-        permission_level: row.permission_level,
-        shared_with_name: (row.profiles && (row.profiles.display_name || row.profiles.email)) || '',
-        _sharedByMe:      true,
-      };
-    }).filter(function(b) { return b.id; });
-  },
+  const { data, error } = await sb.rpc('get_boards_shared_by_me');
+  if (error) throw error;
+  return (data || []).map(function(row) {
+    return {
+      id:               row.board_id,
+      title:            row.board_title || '(untitled)',
+      color:            row.board_color || '#C97D4E',
+      updated_at:       row.board_updated_at,
+      is_pinned:        row.board_is_pinned,
+      permission_level: row.permission_level,
+      shared_with_name: row.shared_with_name || '',
+      _sharedByMe:      true,
+    };
+  }).filter(function(b) { return b.id; });
+},
 
-  async removeGroupMember(groupId, userId) {
-    const { error } = await sb.from('group_members')
-      .delete().eq('group_id', groupId).eq('user_id', userId);
-    if (error) throw error;
-  },
+ async removeGroupMember(groupId, userId) {
+  const { error } = await sb.rpc('remove_group_member', {
+    p_group_id: groupId,
+    p_user_id:  userId,
+  });
+  if (error) throw error;
+},
 
   async leaveGroup(groupId) {
-    const userId = Auth.getUserId();
-    const { error } = await sb.from('group_members')
-      .delete().eq('group_id', groupId).eq('user_id', userId);
-    if (error) throw error;
-  },
+  const userId = Auth.getUserId();
+  const { error } = await sb.rpc('remove_group_member', {
+    p_group_id: groupId,
+    p_user_id:  userId,
+  });
+  if (error) throw error;
+},
 
   async createOrGetDM(identifier) {
     const { data, error } = await sb.rpc('create_or_get_dm', { p_other_identifier: identifier.trim() });
