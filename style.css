@@ -1943,3 +1943,188 @@ button { font-family: var(--font-sans); }
   overflow-y: auto;
   flex: 1;
 }
+
+/* ================================================================
+   NEW CHAT MODAL TABS
+   ================================================================ */
+
+.new-chat-tabs {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--ink-faint);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.new-chat-tab {
+  flex: 1;
+  padding: 8px 12px;
+  font-family: var(--font-sans);
+  font-size: 0.83rem;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.new-chat-tab:not(:last-child) { border-right: 1px solid var(--ink-faint); }
+.new-chat-tab.active { background: var(--accent); color: #fff; }
+.new-chat-tab:hover:not(.active) { background: var(--list-bg); color: var(--ink); }
+
+/* ================================================================
+   MESSAGES — DM badge + group label layout
+   ================================================================ */
+
+.msg-group-label {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.msg-group-name {
+  font-size: 0.86rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.msg-group-dm-badge {
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.msg-dm-avatar {
+  background: var(--ink-mid) !important;
+}
+
+/* ================================================================
+   ORGANIZATION (groups) DETAIL HEADER — flex fix
+   ================================================================ */
+
+.groups-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 24px 14px;
+  border-bottom: 1px solid var(--ink-faint);
+  gap: 12px;
+}
+
+.groups-detail-header > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.groups-detail-header > div:last-child,
+.groups-detail-header > button {
+  flex-shrink: 0;
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+
+.groups-detail-name {
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ================================================================
+   FORUM AUTHOR HOVER CARD
+   ================================================================ */
+
+.forum-author-hover {
+  cursor: pointer;
+  border-bottom: 1px dashed var(--ink-soft);
+  transition: color 0.12s;
+}
+.forum-author-hover:hover { color: var(--accent); border-bottom-color: var(--accent); }
+
+.author-hover-card {
+  position: absolute;
+  z-index: 8000;
+  width: 280px;
+  background: var(--canvas-card);
+  border: 1px solid var(--ink-faint);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  padding: 14px 16px;
+  animation: authorCardIn 0.15s ease;
+}
+
+@keyframes authorCardIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.author-card-name {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 10px;
+}
+
+.author-card-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-soft);
+  margin-bottom: 4px;
+}
+
+.author-card-code-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--canvas);
+  border: 1px solid var(--ink-faint);
+  border-radius: var(--radius-sm);
+  padding: 5px 8px;
+}
+
+.author-card-code {
+  flex: 1;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.72rem;
+  color: var(--ink-mid);
+  word-break: break-all;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.author-card-copy {
+  font-family: var(--font-sans);
+  font-size: 0.73rem;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--ink-faint);
+  background: var(--canvas-card);
+  color: var(--ink-mid);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: var(--transition);
+}
+.author-card-copy:hover { border-color: var(--accent); color: var(--accent); }
+
+/* Boards grid loading state */
+.boards-grid-loading {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+  padding: 60px 0;
+}

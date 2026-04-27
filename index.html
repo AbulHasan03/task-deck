@@ -86,7 +86,7 @@
         <div class="header-tabs" id="headerTabs" style="display:none;">
           <button class="header-tab active" data-tab="boards"   aria-label="Boards">Boards</button>
           <button class="header-tab"        data-tab="shared"   aria-label="Shared with me">Shared</button>
-          <button class="header-tab"        data-tab="groups"   aria-label="Groups">Groups</button>
+          <button class="header-tab"        data-tab="organization" aria-label="Organization">Organization</button>
           <button class="header-tab"        data-tab="messages" aria-label="Messages">Messages</button>
           <button class="header-tab"        data-tab="forum"    aria-label="Public Forum">Forum</button>
         </div>
@@ -237,7 +237,7 @@
                 <p id="groupsDetailDesc" class="groups-detail-desc"></p>
               </div>
               <button class="btn-primary" id="groupsDetailAddMemberBtn" style="font-size:0.82rem;padding:6px 14px;">Add Member</button>
-              <button class="btn-ghost" id="groupsDetailLeaveBtn" style="font-size:0.82rem;padding:6px 14px;color:var(--red);border-color:var(--red);display:none;">Leave Group</button>
+              <button class="btn-ghost" id="groupsDetailLeaveBtn" style="font-size:0.82rem;padding:6px 14px;color:var(--red);border-color:var(--red);display:none;">Leave Organization</button>
             </div>
             <div id="groupsDetailMembers" class="groups-detail-members"></div>
           </div>
@@ -251,7 +251,7 @@
       <div class="messages-container">
         <div class="messages-sidebar">
           <div class="messages-sidebar-top">
-            <button class="btn-primary" id="createGroupFromMessagesBtn" style="width:100%;font-size:0.82rem;padding:7px 12px;">New Group</button>
+            <button class="btn-primary" id="createGroupFromMessagesBtn" style="width:100%;font-size:0.82rem;padding:7px 12px;">New Chat</button>
           </div>
           <div id="messageGroupsList" class="message-groups-list"></div>
         </div>
@@ -259,6 +259,7 @@
           <div class="messages-header" id="messagesHeader">
             <h3 id="messagesGroupTitle">Select a group</h3>
             <div id="messagesHeaderActions" style="display:none;gap:8px;align-items:center;">
+              <button class="btn-ghost" id="msgEditNameBtn" style="font-size:0.8rem;padding:5px 10px;display:none;">Rename</button>
               <button class="btn-ghost" id="msgAddMemberBtn" style="font-size:0.8rem;padding:5px 10px;">+ Member</button>
               <button class="btn-ghost" id="msgViewMembersBtn" style="font-size:0.8rem;padding:5px 10px;">Members</button>
             </div>
@@ -609,5 +610,74 @@
     </div>
   </div>
 
+
+  <!-- ===== NEW CHAT MODAL ===== -->
+  <div class="modal-overlay" id="newChatOverlay" role="dialog" aria-modal="true">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h2 class="modal-card-title" style="cursor:default;">New Chat</h2>
+        <button class="modal-close" id="newChatClose" aria-label="Close">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2 2l14 14M16 2L2 16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="new-chat-tabs">
+          <button class="new-chat-tab active" id="newChatTabGroup">Group Chat</button>
+          <button class="new-chat-tab" id="newChatTabDm">Direct Message</button>
+        </div>
+        <!-- Group panel -->
+        <div id="newChatGroupPanel">
+          <div class="modal-section">
+            <label class="modal-label">Chat Name</label>
+            <input type="text" class="modal-input" id="newChatGroupName" placeholder="e.g. Design Team" maxlength="60" />
+          </div>
+          <div class="modal-section">
+            <label class="modal-label">Description <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
+            <textarea class="modal-desc" id="newChatGroupDesc" placeholder="What is this chat for?" rows="2"></textarea>
+          </div>
+        </div>
+        <!-- DM panel -->
+        <div id="newChatDmPanel" style="display:none;">
+          <div class="modal-section">
+            <label class="modal-label">Email or Friend Code</label>
+            <input type="text" class="modal-input" id="newChatDmTarget" placeholder="user@example.com or friend code" autocomplete="off" />
+            <div class="profile-phone-hint" style="margin-top:4px;">The chat name will show the other person&rsquo;s display name</div>
+          </div>
+        </div>
+        <div id="newChatError" class="share-error" style="display:none;margin-top:8px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-ghost" id="newChatCancelBtn">Cancel</button>
+        <button class="btn-primary" id="newChatCreateBtn">Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== EDIT CHAT NAME MODAL ===== -->
+  <div class="modal-overlay" id="editChatNameOverlay" role="dialog" aria-modal="true">
+    <div class="modal modal-sm">
+      <div class="modal-header">
+        <h2 class="modal-card-title" style="cursor:default;">Rename Chat</h2>
+        <button class="modal-close" id="cancelEditChatNameBtn" aria-label="Close">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2 2l14 14M16 2L2 16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-section">
+          <label class="modal-label">Chat Name</label>
+          <input type="text" class="modal-input" id="editChatNameInput" maxlength="60" />
+        </div>
+        <div class="modal-section">
+          <label class="modal-label">Description <span style="font-weight:400;color:var(--ink-soft);">(optional)</span></label>
+          <textarea class="modal-desc" id="editChatDescInput" rows="2" placeholder="What is this chat for?"></textarea>
+        </div>
+        <div id="editChatNameError" class="share-error" style="display:none;margin-top:8px;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-ghost" id="cancelEditChatNameBtn2" onclick="document.getElementById('editChatNameOverlay').classList.remove('open')">Cancel</button>
+        <button class="btn-primary" id="confirmEditChatNameBtn">Save</button>
+      </div>
+    </div>
+  </div>
 </body>
 </html>

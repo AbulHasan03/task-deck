@@ -582,6 +582,31 @@ const Storage = {
       .delete().eq('group_id', groupId).eq('user_id', userId);
     if (error) throw error;
   },
+
+  async createOrGetDM(identifier) {
+    const { data, error } = await sb.rpc('create_or_get_dm', { p_other_identifier: identifier.trim() });
+    if (error) throw error;
+    return data;
+  },
+
+  async updateGroupInfo(groupId, name, description) {
+    const { error } = await sb.rpc('update_group_info', {
+      p_group_id:    groupId,
+      p_name:        name,
+      p_description: description || null,
+    });
+    if (error) throw error;
+  },
+
+  async getForumUserProfile(userId) {
+    const { data, error } = await sb
+      .from('profiles')
+      .select('id, display_name')
+      .eq('id', userId)
+      .single();
+    if (error) throw error;
+    return data;
+  },
 };
 
 /* ═══════════════════════════════════════════════════════════
@@ -993,7 +1018,7 @@ const Dashboard = (() => {
     const tab   = state.tab;
 
     // These views manage themselves; don't let the subscribe callback override them
-    if (tab === 'messages' || tab === 'forum' || tab === 'groups') return;
+    if (tab === 'messages' || tab === 'forum' || tab === 'organization') return;
 
     UI.showDashboard();
 
@@ -1232,16 +1257,22 @@ const Dashboard = (() => {
       document.querySelectorAll('.shared-filter-btn').forEach(function(b) {
         b.classList.toggle('active', b.dataset.sharedFilter === 'received');
       });
+      // Show dashboard shell immediately — don't wait for async fetch
+      AppState.setState(function(s) { return Object.assign({}, s, { tab: tabKey, sharedBoards: [] }); }, true);
+      UI.showDashboard();
+      const subFilter = UI.el('sharedSubFilter');
+      if (subFilter) subFilter.style.display = '';
+      grid.innerHTML = '<div class="boards-grid-loading"><div class="ai-loading-spinner" style="margin:40px auto;display:block;"></div></div>';
       await refreshSharedBoards();
-    } else if (tabKey === 'groups') {
+    } else if (tabKey === 'organization') {
       const groups = await Storage.getUserGroups();
-      AppState.setState(function(s) { return Object.assign({}, s, { tab: tabKey, groups: groups }); });
+      AppState.setState(function(s) { return Object.assign({}, s, { tab: tabKey, orgs: groups }); });
       UI.showGroups();
       GroupsView.renderInline();
       return; // renderInline handles state
     } else if (tabKey === 'messages') {
       const groups = await Storage.getUserGroups();
-      AppState.setState(function(s) { return Object.assign({}, s, { tab: tabKey, groups: groups }); }, true);
+      AppState.setState(function(s) { return Object.assign({}, s, { tab: tabKey, orgs: groups }); }, true);
       UI.showMessages();
       MessagesView.render();
       MessagesView.init();
@@ -1250,7 +1281,11 @@ const Dashboard = (() => {
       UI.showForum();
       Forum.render();
     } else {
+      // boards tab — show dashboard immediately
       AppState.setState(function(s) { return Object.assign({}, s, { tab: tabKey }); });
+      UI.showDashboard();
+      const subFilter = UI.el('sharedSubFilter');
+      if (subFilter) subFilter.style.display = 'none';
     }
     // Ensure the clicked tab stays highlighted after any async operations
     document.querySelectorAll('.header-tab').forEach(function(t) {
@@ -1286,12 +1321,17 @@ const Dashboard = (() => {
    ═══════════════════════════════════════════════════════════ */
 
 const MessagesView = (() => {
-  let activeGroupId = null;
-  let subscription  = null;
-  // Track IDs we've already rendered so subscription doesn't double-add
-  const renderedIds = new Set();
+  let activeGroupId   = null;
+  let activeGroupName = null;
+  let activeGroupRole = null;
+  let activeIsDm      = false;
+  let subscription    = null;
+  const renderedIds   = new Set();
+  let initDone        = false;
 
   function init() {
+    if (initDone) return;
+    initDone = true;
     const sendBtn = UI.el('sendMessageBtn');
     const input   = UI.el('messageInput');
     if (sendBtn) {
@@ -1299,15 +1339,11 @@ const MessagesView = (() => {
         const content = input ? input.value.trim() : '';
         if (!content || !activeGroupId) return;
         if (input) input.value = '';
-        // Optimistic local append immediately
         const state  = AppState.getState();
         const myId   = (state.profile && state.profile.id) || Auth.getUserId();
         const myName = (state.profile && state.profile.display_name) || 'You';
         const tempId = 'temp-' + Date.now();
-        appendMessageEl({
-          id: tempId, sender_id: myId, sender_name: myName,
-          content: content, created_at: new Date().toISOString(),
-        }, myId);
+        appendMessageEl({ id: tempId, sender_id: myId, sender_name: myName, content: content, created_at: new Date().toISOString() }, myId);
         renderedIds.add(tempId);
         try { await Storage.sendMessage(activeGroupId, content); }
         catch (err) { console.error('Send message error:', err); }
@@ -1318,81 +1354,85 @@ const MessagesView = (() => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (sendBtn) sendBtn.click(); }
       });
     }
-    const createBtn = UI.el('createGroupFromMessagesBtn');
-    if (createBtn) {
-      createBtn.onclick = function() { UI.el('createGroupOverlay')?.classList.add('open'); };
+    // New Chat button
+    const newChatBtn = UI.el('createGroupFromMessagesBtn');
+    if (newChatBtn) {
+      newChatBtn.onclick = function() { openNewChatModal(); };
     }
   }
 
-
-
-  function appendMessageEl(m, myId) {
-    const feed = UI.el('messagesFeed');
-    if (!feed) return;
-    const isMe    = m.sender_id === myId;
-    const initial = (m.sender_name || '?').charAt(0).toUpperCase();
-    const el = document.createElement('div');
-    el.className = 'message' + (isMe ? ' message-mine' : '');
-    if (m.id && String(m.id).startsWith('temp-')) el.dataset.temp = '1';
-    el.innerHTML =
-      (!isMe ? '<div class="message-avatar" title="' + Render.esc(m.sender_name || '') + '">' + Render.esc(initial) + '</div>' : '') +
-      '<div class="message-bubble-wrap">' +
-        (!isMe ? '<div class="message-meta">' + Render.esc(m.sender_name || 'Unknown') + '</div>' : '') +
-        '<div class="message-bubble">' + Render.esc(m.content) + '</div>' +
-        '<div class="message-time">' + new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '</div>' +
-      '</div>' +
-      (isMe ? '<div class="message-avatar message-avatar-mine" title="You">' + Render.esc(initial) + '</div>' : '');
-    feed.appendChild(el);
-    feed.scrollTop = feed.scrollHeight;
+  function openNewChatModal() {
+    const overlay = UI.el('newChatOverlay');
+    if (!overlay) return;
+    const tabGroup = UI.el('newChatTabGroup');
+    const tabDm    = UI.el('newChatTabDm');
+    if (tabGroup) tabGroup.classList.add('active');
+    if (tabDm)    tabDm.classList.remove('active');
+    showNewChatPanel('group');
+    UI.el('newChatGroupName')  && (UI.el('newChatGroupName').value = '');
+    UI.el('newChatGroupDesc')  && (UI.el('newChatGroupDesc').value = '');
+    UI.el('newChatDmTarget')   && (UI.el('newChatDmTarget').value = '');
+    UI.el('newChatError')      && (UI.el('newChatError').style.display = 'none');
+    overlay.classList.add('open');
+    setTimeout(function() { UI.el('newChatGroupName')?.focus(); }, 60);
   }
 
-  function render() {
-    const groups = AppState.getState().groups || [];
-    const list   = UI.el('messageGroupsList');
-    if (!list) return;
-    list.innerHTML = groups.map(function(g) {
-      return '<button class="message-group-btn ' + (activeGroupId === g.id ? 'active' : '') + '" data-id="' + g.id + '" data-name="' + Render.esc(g.name) + '" data-role="' + Render.esc(g.role || '') + '">' +
-        '<span class="msg-group-avatar">' + Render.esc((g.name || '?').charAt(0).toUpperCase()) + '</span>' +
-        '<span>' + Render.esc(g.name) + '</span>' +
-        '</button>';
-    }).join('');
-    list.querySelectorAll('.message-group-btn').forEach(function(btn) {
-      btn.onclick = function() { selectGroup(btn.dataset.id, btn.dataset.name, btn.dataset.role); };
-    });
+  function showNewChatPanel(type) {
+    const groupPanel = UI.el('newChatGroupPanel');
+    const dmPanel    = UI.el('newChatDmPanel');
+    if (groupPanel) groupPanel.style.display = type === 'group' ? '' : 'none';
+    if (dmPanel)    dmPanel.style.display    = type === 'dm'    ? '' : 'none';
   }
 
-  async function selectGroup(groupId, groupName, role) {
-    activeGroupId = groupId;
+  async function selectGroup(groupId, groupName, role, isDm) {
+    activeGroupId   = groupId;
+    activeGroupName = groupName;
+    activeGroupRole = role || '';
+    activeIsDm      = !!isDm;
     renderedIds.clear();
+
     const titleEl   = UI.el('messagesGroupTitle');
     const areaEl    = UI.el('messagesInputArea');
     const feedEl    = UI.el('messagesFeed');
     const actionsEl = UI.el('messagesHeaderActions');
     const panelEl   = UI.el('msgMembersPanel');
+    const editBtn   = UI.el('msgEditNameBtn');
+
     if (titleEl)   titleEl.textContent = groupName;
     if (areaEl)    areaEl.style.display = 'flex';
-    if (actionsEl) { actionsEl.style.display = 'flex'; }
+    if (actionsEl) actionsEl.style.display = 'flex';
     if (panelEl)   panelEl.style.display = 'none';
+    // Only show edit button for non-DM groups where user is admin/owner
+    if (editBtn)   editBtn.style.display = (!isDm && (role === 'admin' || role === 'owner')) ? '' : 'none';
     if (feedEl)    feedEl.innerHTML = '<p class="loading-text">Loading messages…</p>';
 
-    // Wire header action buttons
-    const addBtn     = UI.el('msgAddMemberBtn');
-    const membersBtn = UI.el('msgViewMembersBtn');
+    // Wire add member button (hidden for DMs)
+    const addBtn = UI.el('msgAddMemberBtn');
     if (addBtn) {
+      addBtn.style.display = isDm ? 'none' : '';
       addBtn.onclick = function() { GroupsView.openAddMemberModal(groupId, groupName); };
     }
+
+    // Wire members toggle
+    const membersBtn = UI.el('msgViewMembersBtn');
     if (membersBtn) {
+      membersBtn.style.display = isDm ? 'none' : '';
       membersBtn.onclick = async function() {
         if (!panelEl) return;
         if (panelEl.style.display !== 'none') { panelEl.style.display = 'none'; return; }
         panelEl.style.display = '';
         panelEl.innerHTML = '<div class="members-loading">Loading…</div>';
-        await GroupsView.loadDetailMembers(groupId, role || '');
-        // Copy the rendered members into the panel
+        await GroupsView.loadDetailMembers(groupId, role);
         const detailMembers = UI.el('groupsDetailMembers');
         if (detailMembers) panelEl.innerHTML = detailMembers.innerHTML;
         else panelEl.innerHTML = '<div class="members-empty">No members found.</div>';
       };
+    }
+
+    // Wire edit name button
+    const editNameBtn = UI.el('msgEditNameBtn');
+    if (editNameBtn) {
+      editNameBtn.onclick = function() { openEditNameModal(groupId, groupName, activeGroupName); };
     }
 
     const msgs = await Storage.getGroupMessages(groupId);
@@ -1420,8 +1460,157 @@ const MessagesView = (() => {
     });
   }
 
-  return { init, render };
+  function openEditNameModal(groupId, currentName, currentDesc) {
+    const overlay = UI.el('editChatNameOverlay');
+    if (!overlay) return;
+    UI.el('editChatNameInput')  && (UI.el('editChatNameInput').value  = currentName || '');
+    UI.el('editChatDescInput')  && (UI.el('editChatDescInput').value  = currentDesc || '');
+    UI.el('editChatNameError')  && (UI.el('editChatNameError').style.display = 'none');
+    overlay.dataset.groupId = groupId;
+    overlay.classList.add('open');
+    setTimeout(function() { UI.el('editChatNameInput')?.focus(); }, 60);
+  }
+
+  // Wire edit name confirm
+  UI.el('confirmEditChatNameBtn')?.addEventListener('click', async function() {
+    const overlay = UI.el('editChatNameOverlay');
+    const groupId = overlay?.dataset.groupId;
+    const name    = UI.el('editChatNameInput')?.value.trim();
+    const desc    = UI.el('editChatDescInput')?.value.trim() || null;
+    if (!name) { UI.el('editChatNameInput')?.focus(); return; }
+    const btn  = UI.el('confirmEditChatNameBtn');
+    const errEl = UI.el('editChatNameError');
+    btn.textContent = '…';
+    btn.disabled    = true;
+    try {
+      await Storage.updateGroupInfo(groupId, name, desc);
+      // Update sidebar label
+      const sidebarBtns = document.querySelectorAll('.message-group-btn[data-id="' + groupId + '"]');
+      sidebarBtns.forEach(function(b) {
+        const span = b.querySelector('span:last-child');
+        if (span) span.textContent = name;
+      });
+      // Update header
+      const titleEl = UI.el('messagesGroupTitle');
+      if (titleEl) titleEl.textContent = name;
+      activeGroupName = name;
+      overlay.classList.remove('open');
+      showToast('Chat renamed');
+    } catch (err) {
+      if (errEl) { errEl.textContent = err.message; errEl.style.display = ''; }
+    }
+    btn.textContent = 'Save';
+    btn.disabled    = false;
+  });
+  UI.el('editChatNameOverlay')?.addEventListener('click', function(e) {
+    if (e.target === UI.el('editChatNameOverlay')) UI.el('editChatNameOverlay').classList.remove('open');
+  });
+  UI.el('cancelEditChatNameBtn')?.addEventListener('click', function() { UI.el('editChatNameOverlay')?.classList.remove('open'); });
+
+  // Wire New Chat modal
+  UI.el('newChatTabGroup')?.addEventListener('click', function() {
+    UI.el('newChatTabGroup').classList.add('active');
+    UI.el('newChatTabDm')?.classList.remove('active');
+    showNewChatPanel('group');
+  });
+  UI.el('newChatTabDm')?.addEventListener('click', function() {
+    UI.el('newChatTabDm').classList.add('active');
+    UI.el('newChatTabGroup')?.classList.remove('active');
+    showNewChatPanel('dm');
+    setTimeout(function() { UI.el('newChatDmTarget')?.focus(); }, 60);
+  });
+  UI.el('newChatClose')?.addEventListener('click', function() { UI.el('newChatOverlay')?.classList.remove('open'); });
+  UI.el('newChatCancelBtn')?.addEventListener('click', function() { UI.el('newChatOverlay')?.classList.remove('open'); });
+  UI.el('newChatOverlay')?.addEventListener('click', function(e) {
+    if (e.target === UI.el('newChatOverlay')) UI.el('newChatOverlay').classList.remove('open');
+  });
+
+  UI.el('newChatCreateBtn')?.addEventListener('click', async function() {
+    const isDmPanel = UI.el('newChatDmPanel')?.style.display !== 'none';
+    const btn       = UI.el('newChatCreateBtn');
+    const errEl     = UI.el('newChatError');
+    if (errEl) errEl.style.display = 'none';
+    btn.textContent = '…'; btn.disabled = true;
+
+    try {
+      if (isDmPanel) {
+        // DM flow
+        const target = UI.el('newChatDmTarget')?.value.trim();
+        if (!target) { UI.el('newChatDmTarget')?.focus(); btn.textContent = 'Create'; btn.disabled = false; return; }
+        const dm = await Storage.createOrGetDM(target);
+        UI.el('newChatOverlay')?.classList.remove('open');
+        // Refresh org list and open the DM
+        const groups = await Storage.getUserGroups();
+        AppState.setState(function(s) { return Object.assign({}, s, { orgs: groups }); }, true);
+        render();
+        await selectGroup(dm.group_id, dm.other_name, 'member', true);
+      } else {
+        // Group (chatroom) flow
+        const name = UI.el('newChatGroupName')?.value.trim();
+        const desc = UI.el('newChatGroupDesc')?.value.trim() || null;
+        if (!name) { UI.el('newChatGroupName')?.focus(); btn.textContent = 'Create'; btn.disabled = false; return; }
+        await Storage.createGroup(name, desc);
+        UI.el('newChatOverlay')?.classList.remove('open');
+        const groups = await Storage.getUserGroups();
+        AppState.setState(function(s) { return Object.assign({}, s, { orgs: groups }); }, true);
+        render();
+      }
+    } catch (err) {
+      if (errEl) { errEl.textContent = err.message || 'Could not create.'; errEl.style.display = ''; }
+    }
+    btn.textContent = 'Create'; btn.disabled = false;
+  });
+
+  function appendMessageEl(m, myId) {
+    const feed = UI.el('messagesFeed');
+    if (!feed) return;
+    const isMe    = m.sender_id === myId;
+    const initial = (m.sender_name || '?').charAt(0).toUpperCase();
+    const el = document.createElement('div');
+    el.className = 'message' + (isMe ? ' message-mine' : '');
+    if (m.id && String(m.id).startsWith('temp-')) el.dataset.temp = '1';
+    el.innerHTML =
+      (!isMe ? '<div class="message-avatar" title="' + Render.esc(m.sender_name || '') + '">' + Render.esc(initial) + '</div>' : '') +
+      '<div class="message-bubble-wrap">' +
+        (!isMe ? '<div class="message-meta">' + Render.esc(m.sender_name || 'Unknown') + '</div>' : '') +
+        '<div class="message-bubble">' + Render.esc(m.content) + '</div>' +
+        '<div class="message-time">' + new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + '</div>' +
+      '</div>' +
+      (isMe ? '<div class="message-avatar message-avatar-mine" title="You">' + Render.esc(initial) + '</div>' : '');
+    feed.appendChild(el);
+    feed.scrollTop = feed.scrollHeight;
+  }
+
+  function render() {
+    const state  = AppState.getState();
+    const groups = state.orgs || [];
+    const list   = UI.el('messageGroupsList');
+    if (!list) return;
+    const myId = (state.profile && state.profile.id) || Auth.getUserId();
+    list.innerHTML = groups.map(function(g) {
+      const isDm      = !!g.is_dm;
+      // For DMs show the other person's name; for groups show group name
+      const label     = isDm ? (g.dm_other_name || g.name) : g.name;
+      const initial   = (label || '?').charAt(0).toUpperCase();
+      const isActive  = activeGroupId === g.id;
+      return '<button class="message-group-btn ' + (isActive ? 'active' : '') + '" data-id="' + g.id + '" data-name="' + Render.esc(label) + '" data-role="' + Render.esc(g.role || '') + '" data-isdm="' + (isDm ? '1' : '0') + '">' +
+        '<span class="msg-group-avatar' + (isDm ? ' msg-dm-avatar' : '') + '">' + Render.esc(initial) + '</span>' +
+        '<span class="msg-group-label">' +
+          '<span class="msg-group-name">' + Render.esc(label) + '</span>' +
+          (isDm ? '<span class="msg-group-dm-badge">DM</span>' : '') +
+        '</span>' +
+        '</button>';
+    }).join('');
+    list.querySelectorAll('.message-group-btn').forEach(function(btn) {
+      btn.onclick = function() {
+        selectGroup(btn.dataset.id, btn.dataset.name, btn.dataset.role, btn.dataset.isdm === '1');
+      };
+    });
+  }
+
+  return { init, render, selectGroup, openNewChatModal };
 })();
+
 
 /* ═══════════════════════════════════════════════════════════
    BOARD SHARING MODAL
@@ -1517,7 +1706,7 @@ const GroupsView = (() => {
 
   // ── Inline page renderer ─────────────────────────────────────
   function renderInline() {
-    const groups = AppState.getState().groups || [];
+    const groups = AppState.getState().orgs || [];
     renderSidebar(groups);
     clearDetail();
   }
@@ -1526,7 +1715,7 @@ const GroupsView = (() => {
     const list = UI.el('groupsSidebarList');
     if (!list) return;
     if (!groups.length) {
-      list.innerHTML = '<div class="empty-state" style="padding:24px 16px;"><div class="empty-state-text">No groups yet.<br>Create one to start.</div></div>';
+      list.innerHTML = '<div class="empty-state" style="padding:24px 16px;"><div class="empty-state-text">No organizations yet.<br>Create one to start.</div></div>';
       return;
     }
     list.innerHTML = groups.map(function(g) {
@@ -1542,7 +1731,7 @@ const GroupsView = (() => {
     list.querySelectorAll('.groups-sidebar-item').forEach(function(btn) {
       btn.addEventListener('click', function() {
         const gid  = btn.dataset.gid;
-        const g    = (AppState.getState().groups || []).find(function(x) { return x.id === gid; });
+        const g    = (AppState.getState().orgs || []).find(function(x) { return x.id === gid; });
         if (!g) return;
         selectedGroup = g;
         list.querySelectorAll('.groups-sidebar-item').forEach(function(b) {
@@ -1587,7 +1776,7 @@ const GroupsView = (() => {
         try {
           await Storage.leaveGroup(g.id);
           const groups = await Storage.getUserGroups();
-          AppState.setState(function(s) { return Object.assign({}, s, { groups: groups }); });
+          AppState.setState(function(s) { return Object.assign({}, s, { orgs: groups }); });
           selectedGroup = null;
           renderInline();
           showToast('Left "' + g.name + '"');
@@ -1729,7 +1918,7 @@ const GroupsView = (() => {
     try {
       await Storage.createGroup(name, desc);
       const groups = await Storage.getUserGroups();
-      AppState.setState(function(s) { return Object.assign({}, s, { groups: groups }); });
+      AppState.setState(function(s) { return Object.assign({}, s, { orgs: groups }); });
       UI.el('createGroupOverlay')?.classList.remove('open');
       if (nameEl) nameEl.value = '';
       if (descEl) descEl.value = '';
@@ -1748,7 +1937,7 @@ const GroupsView = (() => {
     if (e.target === UI.el('createGroupOverlay')) UI.el('createGroupOverlay').classList.remove('open');
   });
 
-  // ── Legacy modal (groups tab used to open a modal) ───────────
+  // ── Legacy modal (organization tab used to open a modal) ───────────
   document.getElementById('groupsClose')?.addEventListener('click', function() { UI.el('groupsOverlay')?.classList.remove('open'); });
   document.getElementById('groupsOverlay')?.addEventListener('click', function(e) {
     if (e.target === UI.el('groupsOverlay')) UI.el('groupsOverlay').classList.remove('open');
@@ -1815,7 +2004,7 @@ const Forum = (() => {
       '<div class="forum-post-avatar" style="background:' + color + ';">' + Render.esc(initial) + '</div>' +
       '<div class="forum-post-body">' +
         '<div class="forum-post-meta">' +
-          '<span class="forum-post-name">' + Render.esc(name) + '</span>' +
+          '<span class="forum-post-name forum-author-hover" data-uid="' + Render.esc(post.user_id) + '" data-name="' + Render.esc(name) + '" data-uid-full="' + Render.esc(post.user_id) + '">' + Render.esc(name) + '</span>' +
           '<span class="forum-post-time">' + ts + '</span>' +
           (isOwner ?
             '<span class="forum-post-actions">' +
@@ -1828,6 +2017,12 @@ const Forum = (() => {
     if (isOwner) {
       el.querySelector('.forum-post-edit').addEventListener('click', function() { startEdit(el, post); });
       el.querySelector('.forum-post-delete').addEventListener('click', function() { deletePost(el, post.id); });
+    }
+    // Author hover card
+    const authorEl = el.querySelector('.forum-author-hover');
+    if (authorEl) {
+      authorEl.addEventListener('mouseenter', function(e) { showAuthorCard(e.currentTarget); });
+      authorEl.addEventListener('mouseleave', function() { scheduleHideAuthorCard(); });
     }
     return el;
   }
@@ -1893,6 +2088,70 @@ const Forum = (() => {
       console.error('Delete error:', err);
     }
   }
+
+  /* ── Author hover card ── */
+  let authorCardEl   = null;
+  let authorHideTimer = null;
+
+  function showAuthorCard(anchorEl) {
+    if (authorHideTimer) { clearTimeout(authorHideTimer); authorHideTimer = null; }
+    if (authorCardEl) authorCardEl.remove();
+
+    const uid  = anchorEl.dataset.uid;
+    const name = anchorEl.dataset.name || 'Unknown';
+
+    authorCardEl = document.createElement('div');
+    authorCardEl.className = 'author-hover-card';
+    authorCardEl.innerHTML =
+      '<div class="author-card-name">' + Render.esc(name) + '</div>' +
+      '<div class="author-card-label">Friend Code</div>' +
+      '<div class="author-card-code-row">' +
+        '<code class="author-card-code" id="authorCardCode">' + Render.esc(uid) + '</code>' +
+        '<button class="author-card-copy" id="authorCardCopyBtn" title="Copy friend code">Copy</button>' +
+      '</div>';
+
+    document.body.appendChild(authorCardEl);
+
+    // Position below the anchor
+    const rect = anchorEl.getBoundingClientRect();
+    const cardW = 280;
+    let left = rect.left;
+    if (left + cardW > window.innerWidth - 8) left = window.innerWidth - cardW - 8;
+    authorCardEl.style.top  = (rect.bottom + window.scrollY + 6) + 'px';
+    authorCardEl.style.left = left + 'px';
+
+    authorCardEl.querySelector('#authorCardCopyBtn').addEventListener('click', async function() {
+      const copyBtn = authorCardEl.querySelector('#authorCardCopyBtn');
+      try {
+        await navigator.clipboard.writeText(uid);
+        copyBtn.textContent = 'Copied!';
+      } catch (_) {
+        const ta = document.createElement('textarea');
+        ta.value = uid; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy');
+        document.body.removeChild(ta);
+        copyBtn.textContent = 'Copied!';
+      }
+      setTimeout(function() { copyBtn.textContent = 'Copy'; }, 2000);
+    });
+
+    authorCardEl.addEventListener('mouseenter', function() {
+      if (authorHideTimer) { clearTimeout(authorHideTimer); authorHideTimer = null; }
+    });
+    authorCardEl.addEventListener('mouseleave', function() { scheduleHideAuthorCard(); });
+  }
+
+  function scheduleHideAuthorCard() {
+    authorHideTimer = setTimeout(function() {
+      if (authorCardEl) { authorCardEl.remove(); authorCardEl = null; }
+      authorHideTimer = null;
+    }, 200);
+  }
+
+  // Hide card on scroll
+  window.addEventListener('scroll', function() {
+    if (authorCardEl) { authorCardEl.remove(); authorCardEl = null; }
+  }, { passive: true });
 
   async function submitPost() {
     const input   = UI.el('forumInput');
