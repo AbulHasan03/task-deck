@@ -2485,6 +2485,208 @@ function initAuthUI() {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   AI BOARD GENERATOR
+   Calls Gemini via Supabase Edge Function (generate-board).
+   Gemini only returns JSON — it never touches the database.
+   Board creation uses the same Storage calls as normal boards.
+   ═══════════════════════════════════════════════════════════ */
+
+const AIBoard = (() => {
+  const overlay      = UI.el('aiBoardOverlay');
+  const step1        = UI.el('aiStep1');
+  const step2        = UI.el('aiStep2');
+  const step3        = UI.el('aiStep3');
+  const promptInput  = UI.el('aiPromptInput');
+  const errorEl      = UI.el('aiPromptError');
+  const loadingText  = UI.el('aiLoadingText');
+  const previewName  = UI.el('aiPreviewBoardName');
+  const previewLists = UI.el('aiPreviewLists');
+
+  let pendingBoard = null; // parsed JSON from Gemini
+
+  const LOADING_MESSAGES = [
+    'Thinking\u2026',
+    'Planning your project\u2026',
+    'Organizing tasks\u2026',
+    'Almost ready\u2026',
+  ];
+  let loadingInterval = null;
+
+  function setError(msg) {
+    if (!errorEl) return;
+    errorEl.textContent   = msg;
+    errorEl.style.display = msg ? '' : 'none';
+  }
+
+  function showStep(n) {
+    if (step1) step1.style.display = n === 1 ? '' : 'none';
+    if (step2) step2.style.display = n === 2 ? '' : 'none';
+    if (step3) step3.style.display = n === 3 ? '' : 'none';
+  }
+
+  function open() {
+    if (!overlay) return;
+    showStep(1);
+    if (promptInput) promptInput.value = '';
+    setError('');
+    pendingBoard = null;
+    overlay.classList.add('open');
+    document.body.style.overflow = 'hidden';
+    setTimeout(function() { if (promptInput) promptInput.focus(); }, 60);
+  }
+
+  function close() {
+    if (overlay) overlay.classList.remove('open');
+    document.body.style.overflow = '';
+    if (loadingInterval) { clearInterval(loadingInterval); loadingInterval = null; }
+    pendingBoard = null;
+  }
+
+  function startLoadingAnimation() {
+    let i = 0;
+    if (loadingText) loadingText.textContent = LOADING_MESSAGES[0];
+    loadingInterval = setInterval(function() {
+      i = (i + 1) % LOADING_MESSAGES.length;
+      if (loadingText) loadingText.textContent = LOADING_MESSAGES[i];
+    }, 1400);
+  }
+
+  async function generate() {
+    const prompt = promptInput ? promptInput.value.trim() : '';
+    if (!prompt) { if (promptInput) promptInput.focus(); return; }
+    setError('');
+    showStep(2);
+    startLoadingAnimation();
+
+    try {
+      const result = await sb.auth.getSession();
+      const session = result.data && result.data.session;
+      if (!session) throw new Error('Not signed in.');
+
+      const resp = await fetch(SUPABASE_URL + '/functions/v1/generate-board', {
+        method: 'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': 'Bearer ' + session.access_token,
+          'apikey':        SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ prompt: prompt }),
+      });
+
+      const data = await resp.json().catch(function() { return {}; });
+
+      if (!resp.ok) {
+        throw new Error((data && data.error) || 'Generation failed. Try again.');
+      }
+
+      // Validate structure
+      if (!data.board_title || !Array.isArray(data.lists) || data.lists.length === 0) {
+        throw new Error('Unexpected response from AI. Please try a different prompt.');
+      }
+
+      pendingBoard = data;
+      renderPreview(data);
+      if (loadingInterval) { clearInterval(loadingInterval); loadingInterval = null; }
+      showStep(3);
+
+    } catch (err) {
+      if (loadingInterval) { clearInterval(loadingInterval); loadingInterval = null; }
+      showStep(1);
+      setError(err.message || 'Something went wrong. Please try again.');
+    }
+  }
+
+  function renderPreview(data) {
+    if (previewName) previewName.textContent = data.board_title;
+    if (!previewLists) return;
+    previewLists.innerHTML = data.lists.map(function(list) {
+      const cards = (list.cards || []).map(function(card) {
+        const pri = card.priority ? ' <span class="ai-preview-priority ai-pri-' + card.priority + '">' + card.priority + '</span>' : '';
+        return '<div class="ai-preview-card">' + Render.esc(card.title) + pri + '</div>';
+      }).join('');
+      return '<div class="ai-preview-list">' +
+        '<div class="ai-preview-list-name">' + Render.esc(list.title) +
+          '<span class="ai-preview-list-count">' + (list.cards || []).length + '</span>' +
+        '</div>' +
+        '<div class="ai-preview-cards">' + cards + '</div>' +
+        '</div>';
+    }).join('');
+  }
+
+  async function approve() {
+    if (!pendingBoard) return;
+    const btn = UI.el('aiApproveBtn');
+    if (btn) { btn.textContent = 'Creating\u2026'; btn.disabled = true; }
+
+    const userId = Auth.getUserId();
+    // Pick a color from the palette based on board title hash
+    const colors = ['#C97D4E','#4E7FC9','#4E9B6F','#9B4EC9','#C94E7F','#5A5248'];
+    const colorIdx = pendingBoard.board_title.length % colors.length;
+    const color = colors[colorIdx];
+
+    UI.setSyncStatus('saving');
+    try {
+      // Create board
+      const board = await Storage.createBoard(userId, pendingBoard.board_title, color);
+
+      // Create lists and cards in sequence
+      for (let li = 0; li < pendingBoard.lists.length; li++) {
+        const listDef = pendingBoard.lists[li];
+        const list    = await Storage.createList(board.id, listDef.title, li);
+        const cards   = listDef.cards || [];
+        for (let ci = 0; ci < cards.length; ci++) {
+          const cardDef = cards[ci];
+          const created = await Storage.createCard(board.id, list.id, cardDef.title, ci);
+          // If description or priority, update immediately
+          if (cardDef.description || cardDef.priority) {
+            await Storage.updateCard(created.id, {
+              description: cardDef.description || null,
+              priority:    cardDef.priority    || null,
+            });
+          }
+        }
+      }
+
+      // Add to local boards state
+      AppState.setState(function(s) { s.boards.unshift(board); return s; });
+      UI.setSyncStatus('saved');
+      close();
+
+      // Open the new board
+      await Dashboard.openBoard(board.id);
+
+    } catch (err) {
+      console.error('AI board creation error:', err);
+      UI.setSyncStatus('error');
+      if (btn) { btn.textContent = 'Create Board'; btn.disabled = false; }
+      showStep(3);
+    }
+  }
+
+  // Wire buttons
+  UI.el('aiBoardBtn')?.addEventListener('click', open);
+  UI.el('aiBoardClose')?.addEventListener('click', close);
+  UI.el('aiBoardClose2')?.addEventListener('click', close);
+  UI.el('aiBoardCancelBtn')?.addEventListener('click', close);
+  UI.el('aiGenerateBtn')?.addEventListener('click', generate);
+  UI.el('aiApproveBtn')?.addEventListener('click', approve);
+  UI.el('aiRegenerateBtn')?.addEventListener('click', function() {
+    pendingBoard = null;
+    showStep(1);
+    if (promptInput) promptInput.focus();
+  });
+  overlay?.addEventListener('click', function(e) {
+    if (e.target === overlay) close();
+  });
+  promptInput?.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) generate();
+    if (e.key === 'Escape') close();
+  });
+
+  return { open, close };
+})();
+
+/* ═══════════════════════════════════════════════════════════
    SMS REMINDERS
    API key stored in Supabase Edge Function secrets only.
    ═══════════════════════════════════════════════════════════ */
@@ -2513,7 +2715,8 @@ const SMS = (() => {
       return { ok: false, reason: 'no_session' };
     }
     try {
-      const resp = await fetch(SUPABASE_URL + '/functions/v1/dynamic-responder', {        method: 'POST',
+      const resp = await fetch(SUPABASE_URL + '/functions/v1/dynamic-responder', {
+        method: 'POST',
         headers: {
           'Content-Type':  'application/json',
           'Authorization': 'Bearer ' + session.access_token,
