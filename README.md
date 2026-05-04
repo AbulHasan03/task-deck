@@ -19,9 +19,9 @@ A visual kanban board application built with vanilla JavaScript and Supabase. No
 - Pin boards to keep them at the top of the dashboard
 - Edit board name and color from inside the board (Settings button)
 - Delete boards
-- Boards sort by most recent, oldest, alphabetical, or reverse alphabetical
+- Sort boards by most recent, oldest, alphabetical, or reverse alphabetical
 - Search/filter boards by name
-- Share a board directly from the board view (Share button in header) or from the dashboard card (hover to reveal)
+- Share a board from inside the board (Share button in header) or from the dashboard card
 
 ### Lists
 - Add lists to any board
@@ -31,58 +31,87 @@ A visual kanban board application built with vanilla JavaScript and Supabase. No
 
 ### Cards
 - Add cards to any list
-- Drag and drop cards between lists and within a list (mouse and touch)
+- Drag and drop cards between lists and within a list (mouse and touch supported)
 - Edit card details in a modal: title, description, due date, due time, priority (Low / Medium / High)
 - Priority color-coded: green (low), amber (medium), red (high)
 - Overdue badge shown on cards past their due date
 - Delete cards
 
-### Sharing
-- Share a board with any registered TaskDeck user by email
+### Board Sharing
+- Share a board with any registered TaskDeck user by **email or friend code**
 - Set permission level: View only, Edit, or Admin
-- View who a board is shared with (names + emails)
-- Remove a share
-- "Shared with me" tab shows boards others have shared with you
+- View-only users are blocked from editing at the database level (RLS enforced)
+- View who a board is shared with (names + emails) and remove access
+- **Shared tab** on the dashboard with two sub-filters:
+  - **Shared with me** — boards others have shared with you
+  - **Shared by me** — boards you own that you've shared with others
 
-### Groups
-- Create groups with a name and optional description
-- Add members to a group by email
-- View the members list of any group (toggle open)
-- Groups are used to scope group messaging
+### Organization (Groups)
+- Create organizations with a name and optional description
+- Add members by **email or friend code**
+- Full member list with roles (admin, member)
+- Admins can remove members from an organization
+- Any member can leave an organization
+- Organizations are used to scope group messaging
 
 ### Messaging
-- Group-based messaging (select a group in the sidebar to open a chat)
+- **Group chats** — create a named chatroom for an organization
+- **Direct messages (DMs)** — message any user directly by email or friend code; each person sees the other's name as the chat title
 - Messages appear as chat bubbles — your messages on the right, others on the left
-- Real-time updates via Supabase Realtime — new messages appear without refreshing
+- Messages appear **instantly** without waiting for a server round-trip (optimistic rendering)
+- Real-time updates via Supabase Realtime — messages from others appear live
 - Press Enter to send, Shift+Enter for a new line
+- Add members or view members directly from the messaging screen
+- Admins can rename a chat and edit its description
+
+### Public Forum
+- Community-wide public post feed visible to all signed-in users
+- Post, edit, and delete your own posts
+- Real-time feed — new posts appear without refreshing
+- Load more pagination
+- Hover any post author's name to see a **profile card** with their display name and friend code (no email or phone exposed)
+- Copy friend code directly from the hover card
+
+### AI Board Generator
+- Click **AI Board** on the dashboard to open the generator
+- Describe your project in plain language (e.g. "I have a machine learning final project due in 2 weeks")
+- AI generates a board name, lists, and cards with priorities using Gemini
+- **Preview step** — review everything before anything is created
+- Uncheck individual cards or entire lists you don't need
+- Click Create Board to build only what's checked, then opens the board automatically
+- Powered by a Supabase Edge Function — your Gemini API key never leaves the server
+
+### SMS Reminders *(requires Twilio setup — see below)*
+- Add a phone number to your profile
+- **Phone verification required** — a 6-digit code is texted to you before reminders activate
+- Changing your number resets verification automatically
+- Enable SMS reminders per-card when saving
+- Reminders fire 1 hour before the card's due date/time
+- Custom per-card reminder dates can also be set
 
 ### Profile
 - Set or update your display name
 - View your email
-- Your unique TaskDeck ID with a one-click Copy button — share this with others so they can add you to groups
+- **Friend code** — your unique UUID shown in the profile panel, one-click copy
+  - Share this with others so they can add you to boards, organizations, or DMs without knowing your email
+- Phone number management with verified/unverified badge
 - Avatar color shown in the header and profile panel
 
 ### Theme
 - Light, Dark, or System (follows your OS preference)
 - Preference persisted across sessions
 
-### SMS Reminders *(requires Edge Function setup)*
-- Add a phone number to your profile
-- Enable SMS reminders per-card when saving
-- Reminders fire 1 hour before the card's due date/time
-- Custom per-card reminder dates can also be added
-
 ---
 
-## ⚠️ Known Limitations / Not Yet Implemented
+## ⚠️ Known Limitations
 
-- **SMS**: Requires a working Supabase Edge Function (`send-sms`) with a RapidAPI key configured as a secret. CORS errors will appear in the console if the function isn't deployed — this does not affect any other feature.
-- **Group messaging**: You must be a member of a group to send or read messages. Groups must be created first before messaging is available.
-- **Board sharing**: The person you share with must already have a TaskDeck account. Sharing with an unregistered email will show an error.
+- **SMS**: Requires a Twilio account and a verified phone number. The free Twilio trial only sends to numbers verified in your Twilio console. Set `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_MESSAGING_SID` as secrets in your `dynamic-responder` Edge Function.
+- **AI Board Generator**: Requires a Gemini API key set as `GEMINI_API_KEY` in the `generate-board` Edge Function. Uses `gemini-2.5-flash`.
+- **Board sharing**: The person you share with must already have a TaskDeck account.
+- **DMs**: If a DM already exists between two users, opening a new DM with the same person reopens the existing conversation.
 - **No file attachments** on cards.
-- **No card assignments** — cards can't be assigned to a specific user.
-- **No notifications** outside of SMS reminders.
-- **No board templates** beyond the default three-list seed.
+- **No card assignments** — cards can't be assigned to a specific user yet.
+- **No push notifications** — reminders are SMS only.
 
 ---
 
@@ -94,43 +123,9 @@ A visual kanban board application built with vanilla JavaScript and Supabase. No
 
 ### Steps
 
-1. **Run the schema** — paste the contents of `schema.sql` into the Supabase SQL editor and execute it.
+1. **Run the schema** — paste `schema.sql` into the Supabase SQL editor and execute it.
 
-2. **Run the RPC additions** — paste and run the following in the SQL editor:
-
-```sql
--- Required for group member display
-CREATE OR REPLACE FUNCTION public.get_group_members(p_group_id uuid)
-RETURNS json LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE v_result json;
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM public.group_members WHERE group_id = p_group_id AND user_id = auth.uid())
-  THEN RAISE EXCEPTION 'Not a member of this group'; END IF;
-  SELECT json_agg(json_build_object('user_id', gm.user_id, 'role', gm.role,
-    'display_name', COALESCE(p.display_name, ''), 'email', COALESCE(p.email, ''))
-    ORDER BY gm.joined_at ASC)
-  INTO v_result FROM public.group_members gm
-  LEFT JOIN public.profiles p ON p.id = gm.user_id
-  WHERE gm.group_id = p_group_id;
-  RETURN COALESCE(v_result, '[]'::json);
-END; $$;
-
--- Required for board share display
-CREATE OR REPLACE FUNCTION public.get_board_shares(p_board_id uuid)
-RETURNS json LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
-DECLARE v_result json;
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM public.boards WHERE id = p_board_id AND user_id = auth.uid())
-  THEN RAISE EXCEPTION 'You do not own this board'; END IF;
-  SELECT json_agg(json_build_object('id', bs.id, 'shared_with', bs.shared_with,
-    'permission_level', bs.permission_level,
-    'display_name', COALESCE(p.display_name, ''), 'email', COALESCE(p.email, '')))
-  INTO v_result FROM public.board_shares bs
-  LEFT JOIN public.profiles p ON p.id = bs.shared_with
-  WHERE bs.board_id = p_board_id;
-  RETURN COALESCE(v_result, '[]'::json);
-END; $$;
-```
+2. **Run the additions** — paste `schema-additions.sql` into the SQL editor and execute it. This file is safe to re-run and covers all RPCs, RLS policies, and new tables added after the initial schema.
 
 3. **Configure credentials** — open `app.js` and replace the two constants at the top:
 
@@ -143,11 +138,327 @@ const SUPABASE_ANON_KEY = 'your-anon-key';
 
 5. **Deploy** — upload `index.html`, `app.js`, and `style.css` to your static host. No build step needed.
 
-### SMS Setup *(optional)*
+### Edge Functions
 
-1. Create a Supabase Edge Function named `send-sms`
-2. Add your RapidAPI key as a secret: `RAPIDAPI_KEY`
-3. In the Supabase dashboard go to Edge Functions → `send-sms` → add the CORS header for your domain
+All Edge Functions live in the Supabase dashboard under **Edge Functions**. Create each function, paste in the code, add the required secrets, and turn **Verify JWT OFF** in each function's settings.
+
+#### `dynamic-responder` — SMS Reminders (Twilio)
+
+Secrets required:
+- `TWILIO_ACCOUNT_SID`
+- `TWILIO_AUTH_TOKEN`
+- `TWILIO_MESSAGING_SID`
+
+Code:
+
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey, x-client-info',
+};
+
+Deno.serve(async (req) => {
+
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
+
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    });
+  }
+
+  try {
+    const { to, text } = await req.json();
+
+    if (!to || !text) {
+      return new Response(JSON.stringify({ error: 'Missing to or text' }), {
+        status: 400,
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const ACCOUNT_SID     = Deno.env.get('TWILIO_ACCOUNT_SID');
+    const AUTH_TOKEN      = Deno.env.get('TWILIO_AUTH_TOKEN');
+    const MESSAGING_SID   = Deno.env.get('TWILIO_MESSAGING_SID');
+
+    if (!ACCOUNT_SID || !AUTH_TOKEN || !MESSAGING_SID) {
+      return new Response(JSON.stringify({ error: 'Twilio secrets not configured' }), {
+        status: 500,
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Twilio expects form-encoded body, not JSON
+    const body = new URLSearchParams({
+      To:                  to,
+      MessagingServiceSid: MESSAGING_SID,
+      Body:                text,
+    });
+
+    // Basic auth: Account SID as username, Auth Token as password
+    const credentials = btoa(ACCOUNT_SID + ':' + AUTH_TOKEN);
+
+    const resp = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${ACCOUNT_SID}/Messages.json`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type':  'application/x-www-form-urlencoded',
+          'Authorization': 'Basic ' + credentials,
+        },
+        body: body.toString(),
+      }
+    );
+
+    const payload = await resp.json().catch(() => ({}));
+
+    if (!resp.ok) {
+      console.error('Twilio error:', resp.status, JSON.stringify(payload));
+      return new Response(JSON.stringify({ error: 'SMS failed', detail: payload }), {
+        status: 502,
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      });
+    }
+
+    console.log('SMS sent OK to', to, '| SID:', payload.sid);
+    return new Response(JSON.stringify({ ok: true, sid: payload.sid }), {
+      status: 200,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    });
+
+  } catch (err) {
+    console.error('Edge function error:', err.message);
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    });
+  }
+});
+
+
+#### `generate-board` — AI Board Generator (Gemini)
+
+Secrets required:
+- `GEMINI_API_KEY` — get one at [aistudio.google.com](https://aistudio.google.com)
+
+Code: 
+
+/**
+ * Supabase Edge Function: generate-board
+ */
+
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin':  '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey, x-client-info',
+};
+
+const SYSTEM_PROMPT = `You are a kanban board planner for TaskDeck.
+The user describes a project or goal. Respond with JSON only.
+
+Rules:
+- Maximum 4 lists.
+- Maximum 5 cards per list.
+- Card titles: 3 to 8 words, action verbs (e.g. "Set up GitHub repo", "Write landing page copy").
+- Be minimal — starting-point tasks only, not an exhaustive plan.
+- Assign priority honestly: high = urgent/blocking, medium = important soon, low = nice to have.`;
+
+// Minimal schema — no nullable fields, no optional complexity.
+// description is intentionally omitted; we set it to null server-side.
+const RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
+    board_title: {
+      type: 'string',
+    },
+    lists: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          cards: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                title:    { type: 'string' },
+                priority: { type: 'string', enum: ['low', 'medium', 'high'] },
+              },
+              required: ['title', 'priority'],
+            },
+          },
+        },
+        required: ['title', 'cards'],
+      },
+    },
+  },
+  required: ['board_title', 'lists'],
+};
+
+Deno.serve(async (req) => {
+
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
+
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    });
+  }
+
+  try {
+    const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
+    if (!GEMINI_API_KEY) {
+      return new Response(JSON.stringify({ error: 'GEMINI_API_KEY not configured' }), {
+        status: 500,
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const prompt = (body.prompt || '').trim();
+
+    if (!prompt) {
+      return new Response(JSON.stringify({ error: 'Missing prompt' }), {
+        status: 400,
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (prompt.length > 500) {
+      return new Response(JSON.stringify({ error: 'Prompt too long (max 500 chars)' }), {
+        status: 400,
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const geminiPayload = {
+      systemInstruction: {
+        parts: [{ text: SYSTEM_PROMPT }],
+      },
+      contents: [
+        {
+          role: 'user',
+          parts: [{ text: prompt }],
+        },
+      ],
+      generationConfig: {
+        temperature:      0.5,
+        maxOutputTokens:  2048,
+        responseMimeType: 'application/json',
+        responseSchema:   RESPONSE_SCHEMA,
+      },
+    };
+
+    // Log payload for debugging (remove once stable)
+    console.log('Sending to Gemini:', JSON.stringify(geminiPayload));
+
+    const geminiResp = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + GEMINI_API_KEY,
+      {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(geminiPayload),
+      }
+    );
+
+    // Always log the raw Gemini response for debugging
+    const geminiRaw = await geminiResp.text();
+    console.log('Gemini status:', geminiResp.status);
+    console.log('Gemini raw response:', geminiRaw);
+
+    if (!geminiResp.ok) {
+      console.error('Gemini API error:', geminiResp.status, geminiRaw);
+      return new Response(JSON.stringify({ error: 'AI service error (' + geminiResp.status + '). Try again.' }), {
+        status: 502,
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      });
+    }
+
+    let geminiData;
+    try {
+      geminiData = JSON.parse(geminiRaw);
+    } catch (e) {
+      console.error('Could not parse Gemini response as JSON:', geminiRaw);
+      return new Response(JSON.stringify({ error: 'Unexpected response from AI. Try again.' }), {
+        status: 502,
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const parts = geminiData?.candidates?.[0]?.content?.parts || [];
+    const rawText = parts.find(p => p.text && !p.thought)?.text || parts[0]?.text || '';
+
+    if (!rawText) {
+      console.error('Empty text in Gemini response:', JSON.stringify(geminiData));
+      return new Response(JSON.stringify({ error: 'AI returned an empty response. Try again.' }), {
+        status: 502,
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const cleaned = rawText
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/```\s*$/i, '')
+      .trim();
+
+    let parsed;
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch (e) {
+      console.error('JSON parse error. Raw text:', cleaned);
+      return new Response(JSON.stringify({ error: 'AI returned invalid JSON. Try a different prompt.' }), {
+        status: 502,
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!parsed.board_title || !Array.isArray(parsed.lists)) {
+      console.error('Unexpected structure:', JSON.stringify(parsed));
+      return new Response(JSON.stringify({ error: 'AI returned unexpected structure. Try again.' }), {
+        status: 502,
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Enforce limits and strip descriptions server-side
+    parsed.board_title = String(parsed.board_title).slice(0, 40);
+    parsed.lists = parsed.lists.slice(0, 4).map(function(list) {
+      return {
+        title: String(list.title || 'List').slice(0, 30),
+        cards: (Array.isArray(list.cards) ? list.cards : []).slice(0, 5).map(function(card) {
+          return {
+            title:       String(card.title || 'Task').slice(0, 60),
+            description: null,
+            priority:    ['low', 'medium', 'high'].includes(card.priority) ? card.priority : 'medium',
+          };
+        }),
+      };
+    });
+
+    console.log('Board generated OK:', parsed.board_title, '|', parsed.lists.length, 'lists');
+
+    return new Response(JSON.stringify(parsed), {
+      status: 200,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    });
+
+  } catch (err) {
+    console.error('generate-board unhandled error:', err.message);
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    });
+  }
+});
+
 
 ---
 
@@ -156,4 +467,20 @@ const SUPABASE_ANON_KEY = 'your-anon-key';
 - **Frontend**: Vanilla JavaScript (ES modules), no framework
 - **Backend**: Supabase (PostgreSQL + RLS + Realtime + Edge Functions)
 - **Auth**: Supabase Auth (email/password + Google OAuth)
-- **Hosting**: Any static file host
+- **AI**: Google Gemini 2.5 Flash via Supabase Edge Function
+- **SMS**: Twilio via Supabase Edge Function
+- **Hosting**: Any static file host (currently deployed on GitHub Pages)
+
+---
+
+## File Reference
+
+| File | Purpose |
+|------|---------|
+| `index.html` | App shell, all modals and views |
+| `app.js` | All client-side logic |
+| `style.css` | All styles |
+| `schema.sql` | Initial database schema |
+| `schema-additions.sql` | All RPCs, RLS policies, and tables added post-launch — run after schema.sql |
+| `send-sms-index.ts` | Twilio Edge Function code (paste into `dynamic-responder`) |
+| `generate-board.ts` | Gemini Edge Function code (paste into `generate-board`) |
