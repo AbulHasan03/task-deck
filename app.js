@@ -75,7 +75,14 @@ const UI = {
     const label = this.el('syncLabel');
     if (!dot || !label) return;
     dot.className     = `sync-dot sync-${status}`;
-    label.textContent = status === 'saving' ? 'Saving\u2026' : status === 'error' ? 'Error' : 'Saved';
+    const text = status === 'saving' ? 'Saving\u2026' : status === 'error' ? 'Error' : 'Saved';
+    label.textContent = text;
+
+    if (status === 'saved') {
+      setTimeout(() => {
+        if (label.textContent === 'Saved') label.textContent = '';
+      }, 3000);
+    }
   },
 
   authError(msg) {
@@ -420,7 +427,11 @@ const Storage = {
   },
 
   async reorderCards(cards) {
-    await Promise.all(cards.map((c, i) => sb.from('cards').update({ position: i }).eq('id', c.id)));
+    // Optimized: Use a single RPC call to update all positions in one transaction
+    const { error } = await sb.rpc('reorder_cards', {
+      p_card_data: cards.map((c, i) => ({ id: c.id, pos: i }))
+    });
+    if (error) throw error;
   },
 
   async deleteCard(cardId) {
